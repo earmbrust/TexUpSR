@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(trt_sr_upscaler LANGUAGES CXX)
+project(trt_sr_upscaler VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(TensorRT_ROOT "E:/Projects/TensorRT-10.13.3.9" CACHE PATH "TensorRT installation directory")
