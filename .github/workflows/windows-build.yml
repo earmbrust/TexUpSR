@@ -26,7 +26,14 @@ jobs:
         with:
           cuda: '13.2.0'
           method: network
-          sub-packages: '["nvcc","cudart","visual_studio_integration"]'
+          sub-packages: '["nvcc","crt","cudart","visual_studio_integration"]'
+      - name: Validate CUDA toolkit headers
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:CUDA_PATH) { throw 'CUDA_PATH was not set by CUDA installer' }
+          foreach ($file in @('include/cuda_runtime_api.h', 'include/crt/host_defines.h', 'lib/x64/cudart.lib')) {
+            if (-not (Test-Path (Join-Path $env:CUDA_PATH $file))) { throw "CUDA SDK missing required file: $file" }
+          }
       # Separate versioned caches keep the two SDKs independently reusable.
       # On a cache miss, actions/cache saves the extracted files in its post-job step.
       - name: Restore OpenCV SDK cache
