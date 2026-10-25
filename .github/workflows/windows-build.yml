@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   windows:
-    runs-on: windows-2025
+    runs-on: windows-2022
     timeout-minutes: 90
     defaults:
       run:
@@ -27,7 +27,16 @@ jobs:
           cuda: '13.2.0'
           method: network
           sub-packages: '["nvcc","cudart","visual_studio_integration"]'
+      # Separate versioned caches keep the two SDKs independently reusable.
+      # On a cache miss, actions/cache saves the extracted files in its post-job step.
+      - name: Restore OpenCV SDK cache
+        id: opencv-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/opencv-sdk
+          key: windows-2025-x64-opencv-4.12.0-official-sdk-v1
       - name: Download official OpenCV 4.12.0 Windows binaries
+        if: steps.opencv-cache.outputs.cache-hit != 'true'
         run: |
           $ErrorActionPreference = 'Stop'
           $url = 'https://github.com/opencv/opencv/releases/download/4.12.0/opencv-4.12.0-windows.exe'
@@ -40,8 +49,12 @@ jobs:
           if (-not (Test-Path $sevenZip)) { throw '7-Zip executable not found on runner' }
           & $sevenZip x '-y' "-o$dest" $archive
           if ($LASTEXITCODE -ne 0) { throw 'OpenCV extraction failed' }
+      - name: Validate OpenCV SDK and configure paths
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dest = Join-Path $env:RUNNER_TEMP 'opencv-sdk'
           $root = Get-ChildItem $dest -Directory -Recurse | Where-Object { Test-Path (Join-Path $_.FullName 'build/OpenCVConfig.cmake') } | Select-Object -First 1
-          if (-not $root) { throw 'OpenCV build/OpenCVConfig.cmake not found in official package' }
+          if (-not $root) { throw 'OpenCV build/OpenCVConfig.cmake not found in extracted SDK' }
           $opencvBuild = Join-Path $root.FullName 'build'
           $sdk = @('vc17', 'vc16') | ForEach-Object {
             $candidate = Join-Path $opencvBuild "x64/$_"
@@ -57,14 +70,26 @@ jobs:
           Write-Host "Using OpenCV SDK: $($sdk.Name)"
           "OPENCV_BUILD=$opencvBuild" >> $env:GITHUB_ENV
           "OPENCV_BIN=$($sdk.Bin)" >> $env:GITHUB_ENV
+      - name: Restore TensorRT SDK cache
+        id: tensorrt-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/tensorrt
+          key: windows-2025-x64-tensorrt-10.16.1.11-cuda-13.2-sdk-v1
       - name: Download TensorRT 10.16.1 for CUDA 13.2
+        if: steps.tensorrt-cache.outputs.cache-hit != 'true'
         run: |
+          $ErrorActionPreference = 'Stop'
           $url = 'https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.16.1/zip/TensorRT-10.16.1.11.Windows.amd64.cuda-13.2.zip'
           $zip = Join-Path $env:RUNNER_TEMP 'tensorrt.zip'
           Invoke-WebRequest -Uri $url -OutFile $zip -MaximumRetryCount 3
           Expand-Archive -LiteralPath $zip -DestinationPath "$env:RUNNER_TEMP/tensorrt" -Force
-          $root = Get-ChildItem "$env:RUNNER_TEMP/tensorrt" -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'include/NvInfer.h') } | Select-Object -First 1
-          if (-not $root) { throw 'TensorRT SDK folder not found in archive' }
+      - name: Validate TensorRT SDK and configure path
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dest = Join-Path $env:RUNNER_TEMP 'tensorrt'
+          $root = Get-ChildItem $dest -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'include/NvInfer.h') } | Select-Object -First 1
+          if (-not $root) { throw 'TensorRT SDK folder not found in extracted SDK' }
           foreach ($file in @('lib/nvinfer_10.lib','lib/nvonnxparser_10.lib','bin/nvinfer_10.dll','bin/nvonnxparser_10.dll')) {
             if (-not (Test-Path (Join-Path $root.FullName $file))) { throw "Missing TensorRT SDK file: $file" }
           }
