@@ -1,0 +1,25 @@
+# CMake and Visual Studio
+/build/
+/build-*/
+/out/
+.vs/
+CMakeUserPresets.json
+
+# Compiled binaries
+*.exe
+*.dll
+*.lib
+*.obj
+*.pdb
+*.ilk
+
+# Models and test data
+/models/
+/samples/
+
+# Generated TensorRT engines
+*.engine
+*.plan
+
+# Local patch artifacts
+/patch/
