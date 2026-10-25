@@ -55,6 +55,7 @@ jobs:
           if (-not (Test-Path (Join-Path $cuda 'bin/nvcc.exe'))) { throw 'Cached CUDA compiler is missing' }
           "CUDA_PATH=$cuda" >> $env:GITHUB_ENV
           "$cuda\bin" >> $env:GITHUB_PATH
+          "$cuda\bin\x64" >> $env:GITHUB_PATH
       - name: Validate CUDA toolkit headers
         run: |
           $ErrorActionPreference = 'Stop'
@@ -62,7 +63,15 @@ jobs:
           foreach ($file in @('include/cuda_runtime_api.h', 'include/crt/host_defines.h', 'lib/x64/cudart.lib', 'bin/nvcc.exe')) {
             if (-not (Test-Path (Join-Path $env:CUDA_PATH $file))) { throw "CUDA SDK missing required file: $file" }
           }
-          if (-not (Get-ChildItem (Join-Path $env:CUDA_PATH 'bin') -Filter 'cudart64_*.dll' -File)) { throw 'CUDA runtime DLL is missing' }
+          $runtimeDirs = @('bin/x64', 'bin')
+          $runtime = $runtimeDirs | ForEach-Object {
+            $dir = Join-Path $env:CUDA_PATH $_
+            if (Test-Path $dir) { Get-ChildItem $dir -Filter 'cudart64_*.dll' -File }
+          } | Select-Object -First 1
+          if (-not $runtime) { throw 'CUDA runtime DLL missing from bin/x64 and bin' }
+          Write-Host "CUDA runtime found: $($runtime.FullName)"
+          "CUDART_DLL=$($runtime.FullName)" >> $env:GITHUB_ENV
+          "$($runtime.DirectoryName)" >> $env:GITHUB_PATH
       - name: Save CUDA 13.2 toolkit cache
         if: steps.cuda-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -165,8 +174,8 @@ jobs:
           Copy-Item "$env:TENSORRT_ROOT/bin/nvonnxparser_10.dll" $out
           Get-ChildItem "$env:TENSORRT_ROOT/bin" -Filter 'nvinfer_builder_resource_*.dll' | ForEach-Object { Copy-Item $_.FullName $out }
           Get-ChildItem "$env:OPENCV_BIN" -Filter 'opencv_world*.dll' | ForEach-Object { Copy-Item $_.FullName $out }
-          $cudart = Get-ChildItem (Join-Path $env:CUDA_PATH 'bin') -Filter 'cudart64_*.dll' | Select-Object -First 1
-          if ($cudart) { Copy-Item $cudart.FullName $out }
+          if (-not (Test-Path $env:CUDART_DLL)) { throw 'Validated CUDA runtime DLL unavailable for packaging' }
+          Copy-Item $env:CUDART_DLL $out
           Compress-Archive -Path "$out/*" -DestinationPath 'dist/${{ matrix.artifact }}.zip' -Force
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
