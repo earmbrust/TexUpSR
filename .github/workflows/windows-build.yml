@@ -14,7 +14,20 @@ permissions:
 
 jobs:
   windows:
-    runs-on: windows-2022
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows 2022 / Visual Studio 2022
+            runner: windows-2022
+            generator: Visual Studio 17 2022
+            artifact: TexUpSR-windows-x64
+          - label: Windows 2025 / Visual Studio 2026
+            runner: windows-2025-vs2026
+            generator: Visual Studio 18 2026
+            artifact: TexUpSR-windows-x64-vs2026
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     defaults:
       run:
@@ -103,7 +116,7 @@ jobs:
           "TENSORRT_ROOT=$($root.FullName)" >> $env:GITHUB_ENV
       - name: Configure
         run: |
-          cmake -S . -B build-ci -G 'Visual Studio 17 2022' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT"
+          cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT"
           if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
       - name: Build Release
         run: |
@@ -131,10 +144,10 @@ jobs:
           Get-ChildItem "$env:OPENCV_BIN" -Filter 'opencv_world*.dll' | ForEach-Object { Copy-Item $_.FullName $out }
           $cudart = Get-ChildItem (Join-Path $env:CUDA_PATH 'bin') -Filter 'cudart64_*.dll' | Select-Object -First 1
           if ($cudart) { Copy-Item $cudart.FullName $out }
-          Compress-Archive -Path "$out/*" -DestinationPath 'dist/TexUpSR-windows-x64.zip' -Force
+          Compress-Archive -Path "$out/*" -DestinationPath 'dist/${{ matrix.artifact }}.zip' -Force
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: TexUpSR-windows-x64
-          path: dist/TexUpSR-windows-x64.zip
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.zip
           if-no-files-found: error
