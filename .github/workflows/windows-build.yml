@@ -15,7 +15,7 @@ permissions:
 jobs:
   windows:
     runs-on: windows-2025
-    timeout-minutes: 120
+    timeout-minutes: 90
     defaults:
       run:
         shell: pwsh
@@ -27,14 +27,29 @@ jobs:
           cuda: '13.2.0'
           method: network
           sub-packages: '["nvcc","cudart","visual_studio_integration"]'
-      - name: Install vcpkg and OpenCV
+      - name: Download official OpenCV 4.12.0 Windows binaries
         run: |
-          git clone --depth 1 https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP/vcpkg"
-          & "$env:RUNNER_TEMP/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
-          if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed' }
-          & "$env:RUNNER_TEMP/vcpkg/vcpkg.exe" install opencv4:x64-windows --clean-after-build
-          if ($LASTEXITCODE -ne 0) { throw 'OpenCV installation failed' }
-          "VCPKG_ROOT=$env:RUNNER_TEMP/vcpkg" >> $env:GITHUB_ENV
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/opencv/opencv/releases/download/4.12.0/opencv-4.12.0-windows.exe'
+          $archive = Join-Path $env:RUNNER_TEMP 'opencv-4.12.0-windows.exe'
+          $dest = Join-Path $env:RUNNER_TEMP 'opencv-sdk'
+          Invoke-WebRequest -Uri $url -OutFile $archive -MaximumRetryCount 3
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $sevenZip = (Get-Command '7z.exe' -ErrorAction SilentlyContinue).Source
+          if (-not $sevenZip) { $sevenZip = 'C:\Program Files\7-Zip\7z.exe' }
+          if (-not (Test-Path $sevenZip)) { throw '7-Zip executable not found on runner' }
+          & $sevenZip x '-y' "-o$dest" $archive
+          if ($LASTEXITCODE -ne 0) { throw 'OpenCV extraction failed' }
+          $root = Get-ChildItem $dest -Directory -Recurse | Where-Object { Test-Path (Join-Path $_.FullName 'build/OpenCVConfig.cmake') } | Select-Object -First 1
+          if (-not $root) { throw 'OpenCV build/OpenCVConfig.cmake not found in official package' }
+          $opencvBuild = Join-Path $root.FullName 'build'
+          $bin = Join-Path $opencvBuild 'x64/vc17/bin'
+          $lib = Join-Path $opencvBuild 'x64/vc17/lib'
+          if (-not (Test-Path $bin) -or -not (Test-Path $lib)) { throw 'OpenCV vc17 x64 SDK directories are missing' }
+          if (-not (Get-ChildItem $bin -Filter 'opencv_world*.dll')) { throw 'OpenCV runtime DLL missing' }
+          if (-not (Get-ChildItem $lib -Filter 'opencv_world*.lib')) { throw 'OpenCV import library missing' }
+          "OPENCV_BUILD=$opencvBuild" >> $env:GITHUB_ENV
+          "OPENCV_BIN=$bin" >> $env:GITHUB_ENV
       - name: Download TensorRT 10.16.1 for CUDA 13.2
         run: |
           $url = 'https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.16.1/zip/TensorRT-10.16.1.11.Windows.amd64.cuda-13.2.zip'
@@ -49,7 +64,7 @@ jobs:
           "TENSORRT_ROOT=$($root.FullName)" >> $env:GITHUB_ENV
       - name: Configure
         run: |
-          cmake -S . -B build-ci -G 'Visual Studio 17 2022' -A x64 -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT"
+          cmake -S . -B build-ci -G 'Visual Studio 17 2022' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT"
           if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
       - name: Build Release
         run: |
@@ -58,6 +73,7 @@ jobs:
       - name: Verify CLI without GPU
         run: |
           $exe = './build-ci/Release/trt_sr.exe'
+          $env:PATH = "$env:OPENCV_BIN;$env:PATH"
           & $exe --help | Out-String | Write-Output
           if ($LASTEXITCODE -ne 0) { throw 'CLI --help failed' }
           $PSNativeCommandUseErrorActionPreference = $false
@@ -69,12 +85,10 @@ jobs:
           New-Item -ItemType Directory -Force $out | Out-Null
           Copy-Item 'build-ci/Release/trt_sr.exe' $out
           Copy-Item 'README.md','LICENSE' $out
-          # Runtime libraries supplied by TensorRT; engine-building resources are installed beside the executable.
           Copy-Item "$env:TENSORRT_ROOT/bin/nvinfer_10.dll" $out
           Copy-Item "$env:TENSORRT_ROOT/bin/nvonnxparser_10.dll" $out
           Get-ChildItem "$env:TENSORRT_ROOT/bin" -Filter 'nvinfer_builder_resource_*.dll' | ForEach-Object { Copy-Item $_.FullName $out }
-          $opencvBin = Join-Path $env:VCPKG_ROOT 'installed/x64-windows/bin'
-          if (Test-Path $opencvBin) { Get-ChildItem $opencvBin -Filter '*.dll' | ForEach-Object { Copy-Item $_.FullName $out } }
+          Get-ChildItem "$env:OPENCV_BIN" -Filter 'opencv_world*.dll' | ForEach-Object { Copy-Item $_.FullName $out }
           $cudart = Get-ChildItem (Join-Path $env:CUDA_PATH 'bin') -Filter 'cudart64_*.dll' | Select-Object -First 1
           if ($cudart) { Copy-Item $cudart.FullName $out }
           Compress-Archive -Path "$out/*" -DestinationPath 'dist/TexUpSR-windows-x64.zip' -Force

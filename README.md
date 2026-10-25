@@ -17,7 +17,7 @@ TexUpSR is a C++17 command-line image upscaler for single-model ONNX inference. 
 
 The application has been compiled and run on Windows with Visual Studio 2026, CUDA Toolkit 13.0, TensorRT 10.16.1.11 and OpenCV 4.14.0 (vcpkg). Other toolchain combinations may work but have not been verified. Inference requires a supported NVIDIA GPU and driver. A model must provide a single RGB NCHW input and output, and `--scale` must agree with its output dimensions.
 
-The Windows CI workflow uses Visual Studio 2022, CUDA 13.2, TensorRT 10.16.1.11, and vcpkg OpenCV for compilation and CLI smoke checks. GitHub-hosted runners do not validate GPU inference or generated image quality.
+The Windows CI workflow uses Visual Studio 2022, CUDA 13.2, TensorRT 10.16.1.11, and official prebuilt OpenCV 4.12.0 Windows binaries for compilation and CLI smoke checks. GitHub-hosted runners do not validate GPU inference or generated image quality.
 
 ## Build
 
