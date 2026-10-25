@@ -118,6 +118,7 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $false
           & $exe --not-a-valid-option 2>&1 | Out-String | Write-Output
           if ($LASTEXITCODE -eq 0) { throw 'Invalid option was unexpectedly accepted' }
+          $global:LASTEXITCODE = 0
       - name: Package Windows build
         run: |
           $out = 'dist/TexUpSR-windows-x64'
