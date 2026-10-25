@@ -34,12 +34,19 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
-      - name: Restore CUDA 13.2 toolkit cache
+      - name: Restore or save CUDA 13.2 toolkit cache
         id: cuda-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache@v4
         with:
           path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2
           key: cuda-13.2.0-${{ matrix.runner }}-x64-nvcc-crt-cudart-v1
+      - name: Report CUDA cache status
+        run: |
+          if ('${{ steps.cuda-cache.outputs.cache-hit }}' -eq 'true') {
+            Write-Host 'CUDA 13.2 cache HIT: reusing installed toolkit; installer will be skipped.'
+          } else {
+            Write-Host 'CUDA 13.2 cache MISS: installing toolkit; cache will be saved after a successful job.'
+          }
       - name: Install CUDA 13.2
         if: steps.cuda-cache.outputs.cache-hit != 'true'
         uses: Jimver/cuda-toolkit@v0.2.36
@@ -72,12 +79,7 @@ jobs:
           Write-Host "CUDA runtime found: $($runtime.FullName)"
           "CUDART_DLL=$($runtime.FullName)" >> $env:GITHUB_ENV
           "$($runtime.DirectoryName)" >> $env:GITHUB_PATH
-      - name: Save CUDA 13.2 toolkit cache
-        if: steps.cuda-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2
-          key: cuda-13.2.0-${{ matrix.runner }}-x64-nvcc-crt-cudart-v1
+
       # Separate versioned caches keep the SDKs independently reusable.
       # On a cache miss, actions/cache saves the extracted files in its post-job step.
       - name: Restore OpenCV SDK cache
