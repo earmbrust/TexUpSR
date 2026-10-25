@@ -1,0 +1,187 @@
+name: Windows build
+
+on:
+  workflow_call:
+    inputs:
+      upload_package:
+        type: boolean
+        default: false
+        required: false
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows 2022 / Visual Studio 2022
+            runner: windows-2022
+            generator: Visual Studio 17 2022
+            artifact: TexUpSR-windows-x64
+          - label: Windows 2025 / Visual Studio 2026
+            runner: windows-2025-vs2026
+            generator: Visual Studio 18 2026
+            artifact: TexUpSR-windows-x64-vs2026
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore or save CUDA 13.2 toolkit cache
+        id: cuda-cache
+        uses: actions/cache@v4
+        with:
+          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2
+          key: cuda-13.2.0-${{ matrix.runner }}-x64-nvcc-crt-cudart-v1
+      - name: Report CUDA cache status
+        run: |
+          if ('${{ steps.cuda-cache.outputs.cache-hit }}' -eq 'true') {
+            Write-Host 'CUDA 13.2 cache HIT: reusing installed toolkit; installer will be skipped.'
+          } else {
+            Write-Host 'CUDA 13.2 cache MISS: installing toolkit; cache will be saved after a successful job.'
+          }
+      - name: Install CUDA 13.2
+        if: steps.cuda-cache.outputs.cache-hit != 'true'
+        uses: Jimver/cuda-toolkit@v0.2.36
+        with:
+          cuda: '13.2.0'
+          method: network
+          sub-packages: '["nvcc","crt","cudart","visual_studio_integration"]'
+      - name: Configure restored CUDA environment
+        if: steps.cuda-cache.outputs.cache-hit == 'true'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cuda = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2'
+          if (-not (Test-Path (Join-Path $cuda 'bin/nvcc.exe'))) { throw 'Cached CUDA compiler is missing' }
+          "CUDA_PATH=$cuda" >> $env:GITHUB_ENV
+          "$cuda\bin" >> $env:GITHUB_PATH
+          "$cuda\bin\x64" >> $env:GITHUB_PATH
+      - name: Validate CUDA toolkit headers
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:CUDA_PATH) { throw 'CUDA_PATH was not set by CUDA installer' }
+          foreach ($file in @('include/cuda_runtime_api.h', 'include/crt/host_defines.h', 'lib/x64/cudart.lib', 'bin/nvcc.exe')) {
+            if (-not (Test-Path (Join-Path $env:CUDA_PATH $file))) { throw "CUDA SDK missing required file: $file" }
+          }
+          $runtimeDirs = @('bin/x64', 'bin')
+          $runtime = $runtimeDirs | ForEach-Object {
+            $dir = Join-Path $env:CUDA_PATH $_
+            if (Test-Path $dir) { Get-ChildItem $dir -Filter 'cudart64_*.dll' -File }
+          } | Select-Object -First 1
+          if (-not $runtime) { throw 'CUDA runtime DLL missing from bin/x64 and bin' }
+          Write-Host "CUDA runtime found: $($runtime.FullName)"
+          "CUDART_DLL=$($runtime.FullName)" >> $env:GITHUB_ENV
+          "$($runtime.DirectoryName)" >> $env:GITHUB_PATH
+
+      # Separate versioned caches keep the SDKs independently reusable.
+      # On a cache miss, actions/cache saves the extracted files in its post-job step.
+      - name: Restore OpenCV SDK cache
+        id: opencv-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/opencv-sdk
+          key: windows-2025-x64-opencv-4.12.0-official-sdk-v1
+      - name: Download official OpenCV 4.12.0 Windows binaries
+        if: steps.opencv-cache.outputs.cache-hit != 'true'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/opencv/opencv/releases/download/4.12.0/opencv-4.12.0-windows.exe'
+          $archive = Join-Path $env:RUNNER_TEMP 'opencv-4.12.0-windows.exe'
+          $dest = Join-Path $env:RUNNER_TEMP 'opencv-sdk'
+          Invoke-WebRequest -Uri $url -OutFile $archive -MaximumRetryCount 3
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $sevenZip = (Get-Command '7z.exe' -ErrorAction SilentlyContinue).Source
+          if (-not $sevenZip) { $sevenZip = 'C:\Program Files\7-Zip\7z.exe' }
+          if (-not (Test-Path $sevenZip)) { throw '7-Zip executable not found on runner' }
+          & $sevenZip x '-y' "-o$dest" $archive
+          if ($LASTEXITCODE -ne 0) { throw 'OpenCV extraction failed' }
+      - name: Validate OpenCV SDK and configure paths
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dest = Join-Path $env:RUNNER_TEMP 'opencv-sdk'
+          $root = Get-ChildItem $dest -Directory -Recurse | Where-Object { Test-Path (Join-Path $_.FullName 'build/OpenCVConfig.cmake') } | Select-Object -First 1
+          if (-not $root) { throw 'OpenCV build/OpenCVConfig.cmake not found in extracted SDK' }
+          $opencvBuild = Join-Path $root.FullName 'build'
+          $sdk = @('vc17', 'vc16') | ForEach-Object {
+            $candidate = Join-Path $opencvBuild "x64/$_"
+            $candidateBin = Join-Path $candidate 'bin'
+            $candidateLib = Join-Path $candidate 'lib'
+            if ((Test-Path $candidateBin) -and (Test-Path $candidateLib) -and
+                (Get-ChildItem $candidateBin -Filter 'opencv_world*.dll' -File) -and
+                (Get-ChildItem $candidateLib -Filter 'opencv_world*.lib' -File)) {
+              [pscustomobject]@{ Name = $_; Bin = $candidateBin; Lib = $candidateLib }
+            }
+          } | Select-Object -First 1
+          if (-not $sdk) { throw 'OpenCV Windows x64 SDK not found (expected vc16 or vc17 with opencv_world DLL and import library)' }
+          Write-Host "Using OpenCV SDK: $($sdk.Name)"
+          "OPENCV_BUILD=$opencvBuild" >> $env:GITHUB_ENV
+          "OPENCV_BIN=$($sdk.Bin)" >> $env:GITHUB_ENV
+          "OPENCV_RUNTIME=$($sdk.Name)" >> $env:GITHUB_ENV
+      - name: Restore TensorRT SDK cache
+        id: tensorrt-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/tensorrt
+          key: windows-2025-x64-tensorrt-10.16.1.11-cuda-13.2-sdk-v1
+      - name: Download TensorRT 10.16.1 for CUDA 13.2
+        if: steps.tensorrt-cache.outputs.cache-hit != 'true'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.16.1/zip/TensorRT-10.16.1.11.Windows.amd64.cuda-13.2.zip'
+          $zip = Join-Path $env:RUNNER_TEMP 'tensorrt.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -MaximumRetryCount 3
+          Expand-Archive -LiteralPath $zip -DestinationPath "$env:RUNNER_TEMP/tensorrt" -Force
+      - name: Validate TensorRT SDK and configure path
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dest = Join-Path $env:RUNNER_TEMP 'tensorrt'
+          $root = Get-ChildItem $dest -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'include/NvInfer.h') } | Select-Object -First 1
+          if (-not $root) { throw 'TensorRT SDK folder not found in extracted SDK' }
+          foreach ($file in @('lib/nvinfer_10.lib','lib/nvonnxparser_10.lib','bin/nvinfer_10.dll','bin/nvonnxparser_10.dll')) {
+            if (-not (Test-Path (Join-Path $root.FullName $file))) { throw "Missing TensorRT SDK file: $file" }
+          }
+          "TENSORRT_ROOT=$($root.FullName)" >> $env:GITHUB_ENV
+      - name: Configure
+        run: |
+          cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DOpenCV_ARCH=x64 -DOpenCV_RUNTIME="$env:OPENCV_RUNTIME" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT"
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
+      - name: Build Release
+        run: |
+          cmake --build build-ci --config Release --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
+      - name: Verify CLI without GPU
+        run: |
+          $exe = './build-ci/Release/trt_sr.exe'
+          $env:PATH = "$env:OPENCV_BIN;$env:PATH"
+          & $exe --help | Out-String | Write-Output
+          if ($LASTEXITCODE -ne 0) { throw 'CLI --help failed' }
+          $PSNativeCommandUseErrorActionPreference = $false
+          & $exe --not-a-valid-option 2>&1 | Out-String | Write-Output
+          if ($LASTEXITCODE -eq 0) { throw 'Invalid option was unexpectedly accepted' }
+          $global:LASTEXITCODE = 0
+      - name: Package Windows build
+        run: |
+          $out = 'dist/TexUpSR-windows-x64'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item 'build-ci/Release/trt_sr.exe' $out
+          Copy-Item 'README.md','LICENSE' $out
+          Copy-Item "$env:TENSORRT_ROOT/bin/nvinfer_10.dll" $out
+          Copy-Item "$env:TENSORRT_ROOT/bin/nvonnxparser_10.dll" $out
+          Get-ChildItem "$env:TENSORRT_ROOT/bin" -Filter 'nvinfer_builder_resource_*.dll' | ForEach-Object { Copy-Item $_.FullName $out }
+          Get-ChildItem "$env:OPENCV_BIN" -Filter 'opencv_world*.dll' | ForEach-Object { Copy-Item $_.FullName $out }
+          if (-not (Test-Path $env:CUDART_DLL)) { throw 'Validated CUDA runtime DLL unavailable for packaging' }
+          Copy-Item $env:CUDART_DLL $out
+          Compress-Archive -Path "$out/*" -DestinationPath 'dist/${{ matrix.artifact }}.zip' -Force
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.zip
+          if-no-files-found: error
