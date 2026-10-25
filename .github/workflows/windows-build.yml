@@ -43,13 +43,20 @@ jobs:
           $root = Get-ChildItem $dest -Directory -Recurse | Where-Object { Test-Path (Join-Path $_.FullName 'build/OpenCVConfig.cmake') } | Select-Object -First 1
           if (-not $root) { throw 'OpenCV build/OpenCVConfig.cmake not found in official package' }
           $opencvBuild = Join-Path $root.FullName 'build'
-          $bin = Join-Path $opencvBuild 'x64/vc17/bin'
-          $lib = Join-Path $opencvBuild 'x64/vc17/lib'
-          if (-not (Test-Path $bin) -or -not (Test-Path $lib)) { throw 'OpenCV vc17 x64 SDK directories are missing' }
-          if (-not (Get-ChildItem $bin -Filter 'opencv_world*.dll')) { throw 'OpenCV runtime DLL missing' }
-          if (-not (Get-ChildItem $lib -Filter 'opencv_world*.lib')) { throw 'OpenCV import library missing' }
+          $sdk = @('vc17', 'vc16') | ForEach-Object {
+            $candidate = Join-Path $opencvBuild "x64/$_"
+            $candidateBin = Join-Path $candidate 'bin'
+            $candidateLib = Join-Path $candidate 'lib'
+            if ((Test-Path $candidateBin) -and (Test-Path $candidateLib) -and
+                (Get-ChildItem $candidateBin -Filter 'opencv_world*.dll' -File) -and
+                (Get-ChildItem $candidateLib -Filter 'opencv_world*.lib' -File)) {
+              [pscustomobject]@{ Name = $_; Bin = $candidateBin; Lib = $candidateLib }
+            }
+          } | Select-Object -First 1
+          if (-not $sdk) { throw 'OpenCV Windows x64 SDK not found (expected vc16 or vc17 with opencv_world DLL and import library)' }
+          Write-Host "Using OpenCV SDK: $($sdk.Name)"
           "OPENCV_BUILD=$opencvBuild" >> $env:GITHUB_ENV
-          "OPENCV_BIN=$bin" >> $env:GITHUB_ENV
+          "OPENCV_BIN=$($sdk.Bin)" >> $env:GITHUB_ENV
       - name: Download TensorRT 10.16.1 for CUDA 13.2
         run: |
           $url = 'https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.16.1/zip/TensorRT-10.16.1.11.Windows.amd64.cuda-13.2.zip'
