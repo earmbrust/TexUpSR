@@ -34,20 +34,42 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
+      - name: Restore CUDA 13.2 toolkit cache
+        id: cuda-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2
+          key: cuda-13.2.0-${{ matrix.runner }}-x64-nvcc-crt-cudart-v1
       - name: Install CUDA 13.2
+        if: steps.cuda-cache.outputs.cache-hit != 'true'
         uses: Jimver/cuda-toolkit@v0.2.36
         with:
           cuda: '13.2.0'
           method: network
           sub-packages: '["nvcc","crt","cudart","visual_studio_integration"]'
+      - name: Configure restored CUDA environment
+        if: steps.cuda-cache.outputs.cache-hit == 'true'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cuda = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2'
+          if (-not (Test-Path (Join-Path $cuda 'bin/nvcc.exe'))) { throw 'Cached CUDA compiler is missing' }
+          "CUDA_PATH=$cuda" >> $env:GITHUB_ENV
+          "$cuda\bin" >> $env:GITHUB_PATH
       - name: Validate CUDA toolkit headers
         run: |
           $ErrorActionPreference = 'Stop'
           if (-not $env:CUDA_PATH) { throw 'CUDA_PATH was not set by CUDA installer' }
-          foreach ($file in @('include/cuda_runtime_api.h', 'include/crt/host_defines.h', 'lib/x64/cudart.lib')) {
+          foreach ($file in @('include/cuda_runtime_api.h', 'include/crt/host_defines.h', 'lib/x64/cudart.lib', 'bin/nvcc.exe')) {
             if (-not (Test-Path (Join-Path $env:CUDA_PATH $file))) { throw "CUDA SDK missing required file: $file" }
           }
-      # Separate versioned caches keep the two SDKs independently reusable.
+          if (-not (Get-ChildItem (Join-Path $env:CUDA_PATH 'bin') -Filter 'cudart64_*.dll' -File)) { throw 'CUDA runtime DLL is missing' }
+      - name: Save CUDA 13.2 toolkit cache
+        if: steps.cuda-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2
+          key: cuda-13.2.0-${{ matrix.runner }}-x64-nvcc-crt-cudart-v1
+      # Separate versioned caches keep the SDKs independently reusable.
       # On a cache miss, actions/cache saves the extracted files in its post-job step.
       - name: Restore OpenCV SDK cache
         id: opencv-cache
@@ -90,6 +112,7 @@ jobs:
           Write-Host "Using OpenCV SDK: $($sdk.Name)"
           "OPENCV_BUILD=$opencvBuild" >> $env:GITHUB_ENV
           "OPENCV_BIN=$($sdk.Bin)" >> $env:GITHUB_ENV
+          "OPENCV_RUNTIME=$($sdk.Name)" >> $env:GITHUB_ENV
       - name: Restore TensorRT SDK cache
         id: tensorrt-cache
         uses: actions/cache@v4
@@ -116,7 +139,7 @@ jobs:
           "TENSORRT_ROOT=$($root.FullName)" >> $env:GITHUB_ENV
       - name: Configure
         run: |
-          cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT"
+          cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DOpenCV_ARCH=x64 -DOpenCV_RUNTIME="$env:OPENCV_RUNTIME" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT"
           if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
       - name: Build Release
         run: |
