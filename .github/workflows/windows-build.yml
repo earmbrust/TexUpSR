@@ -1,0 +1,86 @@
+name: Windows build
+
+on:
+  workflow_call:
+    inputs:
+      upload_package:
+        type: boolean
+        default: false
+        required: false
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install CUDA 13.2
+        uses: Jimver/cuda-toolkit@v0.2.36
+        with:
+          cuda: '13.2.0'
+          method: network
+          sub-packages: '["nvcc","cudart","visual_studio_integration"]'
+      - name: Install vcpkg and OpenCV
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP/vcpkg"
+          & "$env:RUNNER_TEMP/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed' }
+          & "$env:RUNNER_TEMP/vcpkg/vcpkg.exe" install opencv4:x64-windows --clean-after-build
+          if ($LASTEXITCODE -ne 0) { throw 'OpenCV installation failed' }
+          "VCPKG_ROOT=$env:RUNNER_TEMP/vcpkg" >> $env:GITHUB_ENV
+      - name: Download TensorRT 10.16.1 for CUDA 13.2
+        run: |
+          $url = 'https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.16.1/zip/TensorRT-10.16.1.11.Windows.amd64.cuda-13.2.zip'
+          $zip = Join-Path $env:RUNNER_TEMP 'tensorrt.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -MaximumRetryCount 3
+          Expand-Archive -LiteralPath $zip -DestinationPath "$env:RUNNER_TEMP/tensorrt" -Force
+          $root = Get-ChildItem "$env:RUNNER_TEMP/tensorrt" -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'include/NvInfer.h') } | Select-Object -First 1
+          if (-not $root) { throw 'TensorRT SDK folder not found in archive' }
+          foreach ($file in @('lib/nvinfer_10.lib','lib/nvonnxparser_10.lib','bin/nvinfer_10.dll','bin/nvonnxparser_10.dll')) {
+            if (-not (Test-Path (Join-Path $root.FullName $file))) { throw "Missing TensorRT SDK file: $file" }
+          }
+          "TENSORRT_ROOT=$($root.FullName)" >> $env:GITHUB_ENV
+      - name: Configure
+        run: |
+          cmake -S . -B build-ci -G 'Visual Studio 17 2022' -A x64 -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT"
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
+      - name: Build Release
+        run: |
+          cmake --build build-ci --config Release --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
+      - name: Verify CLI without GPU
+        run: |
+          $exe = './build-ci/Release/trt_sr.exe'
+          & $exe --help | Out-String | Write-Output
+          if ($LASTEXITCODE -ne 0) { throw 'CLI --help failed' }
+          $PSNativeCommandUseErrorActionPreference = $false
+          & $exe --not-a-valid-option 2>&1 | Out-String | Write-Output
+          if ($LASTEXITCODE -eq 0) { throw 'Invalid option was unexpectedly accepted' }
+      - name: Package Windows build
+        run: |
+          $out = 'dist/TexUpSR-windows-x64'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item 'build-ci/Release/trt_sr.exe' $out
+          Copy-Item 'README.md','LICENSE' $out
+          # Runtime libraries supplied by TensorRT; engine-building resources are installed beside the executable.
+          Copy-Item "$env:TENSORRT_ROOT/bin/nvinfer_10.dll" $out
+          Copy-Item "$env:TENSORRT_ROOT/bin/nvonnxparser_10.dll" $out
+          Get-ChildItem "$env:TENSORRT_ROOT/bin" -Filter 'nvinfer_builder_resource_*.dll' | ForEach-Object { Copy-Item $_.FullName $out }
+          $opencvBin = Join-Path $env:VCPKG_ROOT 'installed/x64-windows/bin'
+          if (Test-Path $opencvBin) { Get-ChildItem $opencvBin -Filter '*.dll' | ForEach-Object { Copy-Item $_.FullName $out } }
+          $cudart = Get-ChildItem (Join-Path $env:CUDA_PATH 'bin') -Filter 'cudart64_*.dll' | Select-Object -First 1
+          if ($cudart) { Copy-Item $cudart.FullName $out }
+          Compress-Archive -Path "$out/*" -DestinationPath 'dist/TexUpSR-windows-x64.zip' -Force
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: TexUpSR-windows-x64
+          path: dist/TexUpSR-windows-x64.zip
+          if-no-files-found: error
