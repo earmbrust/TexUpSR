@@ -28,4 +28,6 @@ struct Stream {
     cudaStream_t value = nullptr;
     Stream() { cudaCheck(cudaStreamCreate(&value), "cudaStreamCreate"); }
     ~Stream() { if (value) cudaStreamDestroy(value); }
+    Stream(const Stream&) = delete;
+    Stream& operator=(const Stream&) = delete;
 };
