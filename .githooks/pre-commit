@@ -1,0 +1,10 @@
+#!/bin/sh
+# Enable with: git config core.hooksPath .githooks
+set -eu
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+if [ ! -f build-analysis/CMakeCache.txt ]; then
+    echo 'Configure analysis first: cmake --preset windows-analysis-local (or windows-analysis)' >&2
+    exit 1
+fi
+cmake --build build-analysis --target quality
