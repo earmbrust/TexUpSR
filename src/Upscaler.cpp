@@ -145,21 +145,3 @@ BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
 
     return result;
 }
-
-int autoTile(size_t freeBytes, int streams, int overlap)
-{
-    // Conservative choices leave memory for TensorRT weights and workspace.
-    const size_t perStream = freeBytes / static_cast<size_t>(std::max(1, streams));
-    const int candidate = perStream >= (size_t(2) << 30) ? 512 : perStream >= (size_t(768) << 20) ? 256 : 128;
-    return std::max(candidate, overlap * 2 + 32);
-}
-
-int autoBatch(size_t freeBytes, int tile, int scale, int streams, double workspaceGB)
-{
-    // Activation memory is model-dependent; reserve most VRAM for TensorRT's internals.
-    const size_t reserve = static_cast<size_t>(workspaceGB * (1ull << 30));
-    const size_t available = freeBytes > reserve ? freeBytes - reserve : freeBytes / 4;
-    const double floatsPerTile = 3.0 * tile * tile * (1.0 + scale * scale);
-    const double conservative = floatsPerTile * sizeof(float) * 8.0 * std::max(1, streams);
-    return std::clamp(static_cast<int>(available / std::max(1.0, conservative)), 1, 8);
-}
