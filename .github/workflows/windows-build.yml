@@ -13,7 +13,23 @@ permissions:
   contents: read
 
 jobs:
+  quality:
+    name: C++ quality gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install static analysis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy cppcheck
+          python3 -m pip install --break-system-packages --user clang-format==22.1.3
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Run quality checks
+        shell: pwsh
+        run: ./tools/check.ps1
   windows:
+    needs: quality
     name: ${{ matrix.label }}
     strategy:
       fail-fast: false
