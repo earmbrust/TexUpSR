@@ -48,6 +48,8 @@ public:
            std::string inputName, std::string outputName,
            int tile, int batch, int scale, int overlap);
 
+    ~Worker() override;
+
     BatchResult Run(const cv::Mat& image, const std::vector<Tile>& tiles) override;
 
     Worker(const Worker&) = delete;

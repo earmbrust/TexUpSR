@@ -49,6 +49,11 @@ Worker::Worker(nvinfer1::ICudaEngine& engine, size_t inCount, size_t outCount,
     }
 }
 
+Worker::~Worker()
+{
+    cudaStreamSynchronize(stream_.value);
+}
+
 BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
 {
     const int tile = tile_;
@@ -96,6 +101,8 @@ BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
         throw std::runtime_error("Model output shape does not match requested scale");
     }
 
+    try
+    {
     cudaCheck(cudaMemcpyAsync(input_.p, hostInput_.Data(), inPer * batch * tensorElementBytes(inputType_),
                               cudaMemcpyHostToDevice, stream_.value), "H2D batch");
 
@@ -113,6 +120,12 @@ BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
     cudaCheck(cudaMemcpyAsync(hostOutput_.Data(), output_.p, outPer * batch * tensorElementBytes(outputType_),
                               cudaMemcpyDeviceToHost, stream_.value), "D2H batch");
     cudaCheck(cudaStreamSynchronize(stream_.value), "Batch stream synchronization");
+    }
+    catch (...)
+    {
+        cudaStreamSynchronize(stream_.value);
+        throw;
+    }
 
     BatchResult result;
     result.tiles = tiles;

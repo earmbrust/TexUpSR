@@ -16,7 +16,12 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <vector>
+
+static_assert(!std::is_copy_constructible_v<Stream>);
+static_assert(!std::is_copy_assignable_v<Stream>);
+static_assert(!std::is_copy_constructible_v<Worker>);
 
 namespace fs = std::filesystem;
 
@@ -135,6 +140,22 @@ void RunInference(const fs::path& modelPath, const fs::path& cachePath)
                 engine.InputName(), engine.OutputName(), options.tile, options.batch,
                 options.scale, options.overlap));
             inference.push_back(workers.back().get());
+        }
+        if (pass == 0)
+        {
+            Worker invalid(engine.Get(), elements, elements, engine.InputType(), engine.OutputType(),
+                           engine.InputName(), "missing_output", options.tile, options.batch,
+                           options.scale, options.overlap);
+            bool rejected = false;
+            try
+            {
+                invalid.Run(input, {{0, 0}});
+            }
+            catch (const std::runtime_error&)
+            {
+                rejected = true;
+            }
+            Require(rejected, "Invalid tensor output name was accepted");
         }
         TilePipeline pipeline(options.tile, options.batch, options.scale, options.overlap, inference);
         VerifyPixels(pipeline.Run(input), input);
