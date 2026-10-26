@@ -1,17 +1,21 @@
 cmake_minimum_required(VERSION 3.25)
 project(trt_sr_upscaler VERSION 0.1.0 LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+include(cmake/CppStandards.cmake)
 
-set(TensorRT_ROOT "$ENV{TENSORRT_ROOT}" CACHE PATH "TensorRT installation directory")
-if(NOT TensorRT_ROOT)
-  message(FATAL_ERROR "Set TensorRT_ROOT to the TensorRT SDK directory")
-endif()
+set(TensorRT_ROOT "$ENV{TENSORRT_ROOT}" CACHE PATH "Optional TensorRT SDK root (empty for system search)")
 find_package(CUDAToolkit REQUIRED)
 find_package(OpenCV REQUIRED)
-find_path(TENSORRT_INCLUDE NvInfer.h PATHS "${TensorRT_ROOT}/include" REQUIRED NO_DEFAULT_PATH)
-find_library(TENSORRT_INFER NAMES nvinfer_10 nvinfer PATHS "${TensorRT_ROOT}/lib" REQUIRED NO_DEFAULT_PATH)
-find_library(TENSORRT_PARSER NAMES nvonnxparser_10 nvonnxparser PATHS "${TensorRT_ROOT}/lib" REQUIRED NO_DEFAULT_PATH)
+# TensorRT Windows ZIPs use lib/; Linux packages can use lib, lib64, or
+# distro multiarch locations. Do not disable CMake's normal system search.
+find_path(TENSORRT_INCLUDE NAMES NvInfer.h
+  HINTS "${TensorRT_ROOT}/include" "${TensorRT_ROOT}/include/x86_64-linux-gnu" "${TensorRT_ROOT}/include/aarch64-linux-gnu"
+  REQUIRED)
+find_library(TENSORRT_INFER NAMES nvinfer_10 nvinfer
+  HINTS "${TensorRT_ROOT}/lib" "${TensorRT_ROOT}/lib64" "${TensorRT_ROOT}/lib/x86_64-linux-gnu" "${TensorRT_ROOT}/lib/aarch64-linux-gnu"
+  REQUIRED)
+find_library(TENSORRT_PARSER NAMES nvonnxparser_10 nvonnxparser
+  HINTS "${TensorRT_ROOT}/lib" "${TensorRT_ROOT}/lib64" "${TensorRT_ROOT}/lib/x86_64-linux-gnu" "${TensorRT_ROOT}/lib/aarch64-linux-gnu"
+  REQUIRED)
 
 add_executable(trt_sr
   main.cpp
