@@ -35,17 +35,16 @@ int main(int argc, char** argv) {
             static_cast<int64_t>(tile) * o.scale > INT_MAX)
             throw std::runtime_error("Upscaled dimensions overflow int");
         if (!o.quiet) std::cout << "Tile " << tile << ", batch " << batch << ", streams " << o.streams << "\n";
-        EngineState state = loadEngine(o, tile, batch, logger);
-        auto& engine = state.engine;
-        const auto& inName = state.inName;
-        const auto& outName = state.outName;
-        const auto inType = state.inType;
-        const auto outType = state.outType;
+        Engine engine(o, tile, batch, logger);
+        const auto& inName = engine.InputName();
+        const auto& outName = engine.OutputName();
+        const auto inType = engine.InputType();
+        const auto outType = engine.OutputType();
         const size_t inCount = static_cast<size_t>(batch) * 3 * tile * tile;
         const size_t outCount = inCount * static_cast<size_t>(o.scale) * o.scale;
         std::vector<std::unique_ptr<Worker>> workers;
         for (int i = 0; i < o.streams; ++i)
-            workers.emplace_back(std::make_unique<Worker>(*engine, inCount, outCount, inType, outType));
+            workers.emplace_back(std::make_unique<Worker>(engine.Get(), inCount, outCount, inType, outType));
         const int width = image.cols * o.scale, height = image.rows * o.scale;
         cv::Mat accum(height, width, CV_32FC3, cv::Scalar(0, 0, 0));
         cv::Mat weights(height, width, CV_32FC1, cv::Scalar(0));
