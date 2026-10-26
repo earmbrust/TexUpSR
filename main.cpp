@@ -1,6 +1,7 @@
 // Copyright (c) 2025-2026 Elden Armbrust. MIT License.
 #include "Engine.hpp"
 #include "Options.hpp"
+#include "Sizing.hpp"
 #include "TilePipeline.hpp"
 #include "Upscaler.hpp"
 

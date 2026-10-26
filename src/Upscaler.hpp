@@ -69,6 +69,3 @@ private:
     int scale_;
     int overlap_;
 };
-
-int autoTile(size_t freeBytes, int streams, int overlap);
-int autoBatch(size_t freeBytes, int tile, int scale, int streams, double workspaceGB);

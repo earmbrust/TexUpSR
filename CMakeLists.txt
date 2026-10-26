@@ -18,6 +18,7 @@ add_executable(trt_sr
   src/Options.cpp
   src/Engine.cpp
   src/Upscaler.cpp
+  src/Sizing.cpp
   src/ImageTiles.cpp
   src/TilePipeline.cpp
 )
@@ -70,6 +71,8 @@ if(BUILD_TESTING)
     tests/GpuInferenceTests.cpp
     src/Engine.cpp
     src/Upscaler.cpp
+    src/Sizing.cpp
+  src/Sizing.cpp
     src/TilePipeline.cpp
     src/ImageTiles.cpp
   )
@@ -101,4 +104,8 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME gpu_inference COMMAND gpu_inference_tests)
   set_tests_properties(gpu_inference PROPERTIES LABELS "gpu;integration" SKIP_RETURN_CODE 77)
+
+  add_executable(sizing_tests tests/SizingTests.cpp src/Sizing.cpp)
+  target_include_directories(sizing_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  add_test(NAME sizing COMMAND sizing_tests)
 endif()
