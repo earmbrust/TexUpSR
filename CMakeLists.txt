@@ -18,7 +18,10 @@ add_executable(trt_sr
   src/Options.cpp
   src/Engine.cpp
   src/Upscaler.cpp
+  src/TensorSizes.cpp
+  src/Sizing.cpp
   src/ImageTiles.cpp
+  src/TilePipeline.cpp
 )
 target_include_directories(trt_sr PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_include_directories(trt_sr PRIVATE "${TENSORRT_INCLUDE}" ${OpenCV_INCLUDE_DIRS})
@@ -57,4 +60,62 @@ if(BUILD_TESTING)
   target_include_directories(image_tiles_tests PRIVATE ${OpenCV_INCLUDE_DIRS})
   target_link_libraries(image_tiles_tests PRIVATE ${OpenCV_LIBS})
   add_test(NAME image_tiles COMMAND image_tiles_tests)
+  add_executable(tile_pipeline_tests tests/TilePipelineTests.cpp src/TilePipeline.cpp src/ImageTiles.cpp)
+  target_include_directories(tile_pipeline_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(tile_pipeline_tests PRIVATE ${OpenCV_LIBS})
+  add_test(NAME tile_pipeline COMMAND tile_pipeline_tests)
+  add_executable(tile_pipeline_progress_tests tests/TilePipelineProgressTests.cpp src/TilePipeline.cpp src/ImageTiles.cpp)
+  target_include_directories(tile_pipeline_progress_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(tile_pipeline_progress_tests PRIVATE ${OpenCV_LIBS})
+  add_test(NAME tile_pipeline_progress COMMAND tile_pipeline_progress_tests)
+  add_executable(gpu_inference_tests
+    tests/GpuInferenceTests.cpp
+    src/Engine.cpp
+    src/Upscaler.cpp
+  src/TensorSizes.cpp
+    src/Sizing.cpp
+    src/TilePipeline.cpp
+    src/ImageTiles.cpp
+  )
+  target_include_directories(gpu_inference_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src" "${TENSORRT_INCLUDE}" ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(gpu_inference_tests PRIVATE
+    ${OpenCV_LIBS} CUDA::cudart "${TENSORRT_INFER}" "${TENSORRT_PARSER}")
+  target_compile_definitions(gpu_inference_tests PRIVATE
+    TEXUPSR_GPU_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/relu.onnx")
+  if(WIN32)
+    add_dependencies(gpu_inference_tests trt_sr)
+    foreach(_trt_dll IN ITEMS nvinfer_10.dll nvonnxparser_10.dll)
+      add_custom_command(TARGET gpu_inference_tests POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+          "${TensorRT_ROOT}/bin/${_trt_dll}" "$<TARGET_FILE_DIR:gpu_inference_tests>"
+        VERBATIM)
+    endforeach()
+    file(GLOB _trt_builder_dlls "${TensorRT_ROOT}/bin/nvinfer_builder_resource_*.dll")
+    foreach(_builder_dll IN LISTS _trt_builder_dlls)
+      add_custom_command(TARGET gpu_inference_tests POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+          "${_builder_dll}" "$<TARGET_FILE_DIR:gpu_inference_tests>"
+        VERBATIM)
+    endforeach()
+    add_custom_command(TARGET gpu_inference_tests POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${_cuda_runtime_dll}" "$<TARGET_FILE_DIR:gpu_inference_tests>"
+      VERBATIM)
+  endif()
+  add_test(NAME gpu_inference COMMAND gpu_inference_tests)
+  set_tests_properties(gpu_inference PROPERTIES LABELS "gpu;integration" SKIP_RETURN_CODE 77)
+
+  add_executable(sizing_tests tests/SizingTests.cpp src/Sizing.cpp)
+  target_include_directories(sizing_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  add_test(NAME sizing COMMAND sizing_tests)
 endif()
+
+if(BUILD_TESTING)
+  add_executable(tensor_sizes_tests tests/TensorSizesTests.cpp src/TensorSizes.cpp)
+  target_include_directories(tensor_sizes_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  add_test(NAME tensor_sizes COMMAND tensor_sizes_tests)
+endif()
+
+# Optional developer quality targets (do not run during ordinary builds).
+include(cmake/QualityTargets.cmake)

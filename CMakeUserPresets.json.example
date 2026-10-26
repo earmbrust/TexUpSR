@@ -1,0 +1,14 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "windows-analysis-local",
+      "inherits": "windows-analysis",
+      "cacheVariables": {
+        "OpenCV_DIR": "C:/path/to/opencv/build",
+        "TensorRT_ROOT": "C:/path/to/TensorRT",
+        "CUDAToolkit_ROOT": "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0"
+      }
+    }
+  ]
+}
