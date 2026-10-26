@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Elden Armbrust. MIT License.
+// Copyright (c) 2025-2026 Elden Armbrust. MIT License.
 #pragma once
 #include "Resources.hpp"
 #include "ImageTiles.hpp"

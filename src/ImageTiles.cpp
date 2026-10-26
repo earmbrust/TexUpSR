@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Elden Armbrust. MIT License.
+// Copyright (c) 2025-2026 Elden Armbrust. MIT License.
 #include "ImageTiles.hpp"
 #include <algorithm>
 void fillInput(const cv::Mat& src, Tile tilePos, int tile, int overlap, float* dst) {
@@ -15,7 +15,6 @@ void fillInput(const cv::Mat& src, Tile tilePos, int tile, int overlap, float* d
         }
     }
 }
-// Smooth feather weights: adjacent overlapping tiles blend instead of leaving hard seams.
 // Weight tapers only at interior tile edges; the image's outside edges remain fully weighted.
 void blendTile(cv::Mat& accum, cv::Mat& weights, const cv::Mat& sr,
                       Tile pos, int tile, int scale, int overlap, int srcW, int srcH) {

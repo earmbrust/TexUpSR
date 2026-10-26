@@ -156,6 +156,10 @@ jobs:
         run: |
           cmake --build build-ci --config Release --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
+      - name: Run CPU option tests
+        run: |
+          ctest --test-dir build-ci -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'CPU option tests failed' }
       - name: Verify CLI without GPU
         run: |
           $exe = './build-ci/Release/trt_sr.exe'
