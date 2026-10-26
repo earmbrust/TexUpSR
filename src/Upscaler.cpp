@@ -128,15 +128,15 @@ BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
     for (size_t i = 0; i < tiles.size(); ++i)
     {
         cv::Mat sr(outTile, outTile, CV_32FC3);
-        const float* data32 = outputType_ == nvinfer1::DataType::kFLOAT
-                                  ? static_cast<const float*>(hostOutput_.Data()) + i * outPer
-                                  : nullptr;
-        const __half* data16 = outputType_ == nvinfer1::DataType::kHALF
-                                   ? static_cast<const __half*>(hostOutput_.Data()) + i * outPer
-                                   : nullptr;
-
-        auto sample = [&](size_t index) -> float
-        { return data32 ? data32[index] : __half2float(data16[index]); };
+        const auto sample = [&](size_t index) -> float
+        {
+            const size_t offset = i * outPer + index;
+            if (outputType_ == nvinfer1::DataType::kFLOAT)
+            {
+                return static_cast<const float*>(hostOutput_.Data())[offset];
+            }
+            return __half2float(static_cast<const __half*>(hostOutput_.Data())[offset]);
+        };
 
         for (int y = 0; y < outTile; ++y)
         {
