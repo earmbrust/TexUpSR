@@ -25,7 +25,6 @@ target_include_directories(trt_sr PRIVATE "${TENSORRT_INCLUDE}" ${OpenCV_INCLUDE
 target_link_libraries(trt_sr PRIVATE ${OpenCV_LIBS} CUDA::cudart "${TENSORRT_INFER}" "${TENSORRT_PARSER}")
 
 if(WIN32)
-  # TensorRT headers and import libraries are in include/ and lib/; runtime DLLs are in bin/.
   foreach(_trt_runtime IN ITEMS nvinfer_10.dll nvonnxparser_10.dll)
     set(_trt_runtime_path "${TensorRT_ROOT}/bin/${_trt_runtime}")
     if(NOT EXISTS "${_trt_runtime_path}")
@@ -36,7 +35,6 @@ if(WIN32)
       VERBATIM)
   endforeach()
 
-  # CUDA Windows layouts vary by toolkit version (bin/ or bin/x64/).
   file(GLOB _cuda_runtime_dlls
     "${CUDAToolkit_BIN_DIR}/cudart64_*.dll"
     "${CUDAToolkit_BIN_DIR}/x64/cudart64_*.dll")

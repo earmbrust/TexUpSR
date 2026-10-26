@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Elden Armbrust. MIT License.
+// Copyright (c) 2025-2026 Elden Armbrust. MIT License.
 #include "Engine.hpp"
 #include "Upscaler.hpp"
 #include <NvOnnxParser.h>
