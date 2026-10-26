@@ -1,5 +1,6 @@
 // Copyright (c) 2025-2026 Elden Armbrust. MIT License.
 #include "Upscaler.hpp"
+#include "TensorSizes.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -29,10 +30,10 @@ Worker::Worker(nvinfer1::ICudaEngine& engine, size_t inCount, size_t outCount,
                std::string inputName, std::string outputName,
                int tile, int batch, int scale, int overlap)
     : context_(engine.createExecutionContext()),
-      input_(inCount * tensorElementBytes(inType)),
-      output_(outCount * tensorElementBytes(outType)),
-      hostInput_(inCount * tensorElementBytes(inType)),
-      hostOutput_(outCount * tensorElementBytes(outType)),
+      input_(TensorBytes(inCount, tensorElementBytes(inType))),
+      output_(TensorBytes(outCount, tensorElementBytes(outType))),
+      hostInput_(TensorBytes(inCount, tensorElementBytes(inType))),
+      hostOutput_(TensorBytes(outCount, tensorElementBytes(outType))),
       inputName_(std::move(inputName)),
       outputName_(std::move(outputName)),
       inputType_(inType),
