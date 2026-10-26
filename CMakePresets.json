@@ -18,6 +18,20 @@
         "TensorRT_ROOT": "$env{TENSORRT_ROOT}",
         "CUDAToolkit_ROOT": "$env{CUDA_PATH}"
       }
+    },
+    {
+      "name": "windows-analysis",
+      "displayName": "Windows - Ninja clang-tidy compilation database",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-analysis",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-windows",
+        "TensorRT_ROOT": "$env{TENSORRT_ROOT}",
+        "CUDAToolkit_ROOT": "$env{CUDA_PATH}"
+      }
     }
   ],
   "buildPresets": [

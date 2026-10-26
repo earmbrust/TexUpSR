@@ -74,7 +74,6 @@ if(BUILD_TESTING)
     src/Upscaler.cpp
   src/TensorSizes.cpp
     src/Sizing.cpp
-  src/Sizing.cpp
     src/TilePipeline.cpp
     src/ImageTiles.cpp
   )
@@ -117,3 +116,6 @@ if(BUILD_TESTING)
   target_include_directories(tensor_sizes_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   add_test(NAME tensor_sizes COMMAND tensor_sizes_tests)
 endif()
+
+# Optional developer quality targets (do not run during ordinary builds).
+include(cmake/QualityTargets.cmake)
