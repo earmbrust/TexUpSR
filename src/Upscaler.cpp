@@ -26,7 +26,8 @@ void* PinnedBuffer::Data() const
 
 Worker::Worker(nvinfer1::ICudaEngine& engine, size_t inCount, size_t outCount,
                nvinfer1::DataType inType, nvinfer1::DataType outType,
-               std::string inputName, std::string outputName)
+               std::string inputName, std::string outputName,
+               int tile, int batch, int scale, int overlap)
     : context_(engine.createExecutionContext()),
       input_(inCount * tensorElementBytes(inType)),
       output_(outCount * tensorElementBytes(outType)),
@@ -35,7 +36,11 @@ Worker::Worker(nvinfer1::ICudaEngine& engine, size_t inCount, size_t outCount,
       inputName_(std::move(inputName)),
       outputName_(std::move(outputName)),
       inputType_(inType),
-      outputType_(outType)
+      outputType_(outType),
+      tile_(tile),
+      batch_(batch),
+      scale_(scale),
+      overlap_(overlap)
 {
     if (!context_)
     {
@@ -43,9 +48,12 @@ Worker::Worker(nvinfer1::ICudaEngine& engine, size_t inCount, size_t outCount,
     }
 }
 
-BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles,
-                        int tile, int batch, int scale, int overlap)
+BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
 {
+    const int tile = tile_;
+    const int batch = batch_;
+    const int scale = scale_;
+    const int overlap = overlap_;
     const size_t inPlane = static_cast<size_t>(tile) * tile;
     const size_t inPer = 3 * inPlane;
     const int outTile = tile * scale;

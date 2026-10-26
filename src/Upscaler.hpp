@@ -1,7 +1,7 @@
 // Copyright (c) 2025-2026 Elden Armbrust. MIT License.
 #pragma once
 
-#include "ImageTiles.hpp"
+#include "Inference.hpp"
 #include "Resources.hpp"
 
 #include <cuda_fp16.h>
@@ -40,15 +40,15 @@ private:
     void* data_ = nullptr;
 };
 
-class Worker
+class Worker final : public Inference
 {
 public:
     Worker(nvinfer1::ICudaEngine& engine, size_t inCount, size_t outCount,
            nvinfer1::DataType inType, nvinfer1::DataType outType,
-           std::string inputName, std::string outputName);
+           std::string inputName, std::string outputName,
+           int tile, int batch, int scale, int overlap);
 
-    BatchResult Run(const cv::Mat& image, const std::vector<Tile>& tiles,
-                    int tile, int batch, int scale, int overlap);
+    BatchResult Run(const cv::Mat& image, const std::vector<Tile>& tiles) override;
 
     Worker(const Worker&) = delete;
     Worker& operator=(const Worker&) = delete;
@@ -64,6 +64,10 @@ private:
     std::string outputName_;
     nvinfer1::DataType inputType_;
     nvinfer1::DataType outputType_;
+    int tile_;
+    int batch_;
+    int scale_;
+    int overlap_;
 };
 
 int autoTile(size_t freeBytes, int streams, int overlap);

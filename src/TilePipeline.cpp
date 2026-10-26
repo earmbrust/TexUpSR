@@ -29,7 +29,7 @@ TilePipeline::TilePipeline(int tile, int batch, int scale, int overlap,
     }
 }
 
-cv::Mat TilePipeline::Run(const cv::Mat& image) const
+cv::Mat TilePipeline::Run(const cv::Mat& image, const Progress& progress) const
 {
     if (image.empty() || image.type() != CV_8UC3)
     {
@@ -63,6 +63,7 @@ cv::Mat TilePipeline::Run(const cv::Mat& image) const
 
     std::deque<std::future<BatchResult>> jobs;
 
+    size_t processed = 0;
     auto consume = [&](std::future<BatchResult>& job, const std::vector<Tile>& expected)
     {
         auto result = job.get();
@@ -82,6 +83,12 @@ cv::Mat TilePipeline::Run(const cv::Mat& image) const
 
             blendTile(accum, weights, result.images[i], expected[i], tile_, scale_,
                       overlap_, image.cols, image.rows);
+        }
+
+        processed += result.tiles.size();
+        if (progress)
+        {
+            progress(result, processed, tiles.size());
         }
     };
 
