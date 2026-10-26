@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check tag, project version and main ancestry
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo 'Invalid SemVer release tag' >&2; exit 1; }
+          version="${tag#v}"
+          grep -Eq "^project\(trt_sr_upscaler VERSION ${version//./\.} LANGUAGES CXX\)$" CMakeLists.txt || { echo 'Release tag does not match CMake project version' >&2; exit 1; }
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo 'Tagged commit is not on main' >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+  build:
+    needs: verify
+    uses: ./.github/workflows/windows-build.yml
+    permissions:
+      contents: read
+  publish:
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: TexUpSR-windows-x64
+          path: dist
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/TexUpSR-windows-x64.zip --title "TexUpSR ${{ needs.verify.outputs.version }}" --generate-notes --verify-tag
