@@ -113,6 +113,80 @@ void blendOverlappingTilesUsesWeightedAverage() {
         near(accum.at<cv::Vec3f>(y, 3)[0] / weights.at<float>(y, 3), 0.8f, "Right edge");
     }
 }
+
+void fillInputSupportsRoiAndPreservesBounds() {
+    cv::Mat image(4, 5, CV_8UC3, cv::Scalar(1, 2, 3));
+    cv::Mat roi = image(cv::Rect(1, 1, 2, 2));
+    roi.at<cv::Vec3b>(0, 0) = cv::Vec3b(10, 20, 30);
+    roi.at<cv::Vec3b>(0, 1) = cv::Vec3b(40, 50, 60);
+    roi.at<cv::Vec3b>(1, 0) = cv::Vec3b(70, 80, 90);
+    roi.at<cv::Vec3b>(1, 1) = cv::Vec3b(100, 110, 120);
+    require(!roi.isContinuous(), "ROI must exercise non-contiguous row strides");
+
+    std::vector<float> buffer(16, -7.f);
+    fillInput(roi, {0, 0}, 2, 0, buffer.data() + 2);
+
+    near(buffer[0], -7.f, "Prefix guard 0");
+    near(buffer[1], -7.f, "Prefix guard 1");
+    near(buffer[14], -7.f, "Suffix guard 0");
+    near(buffer[15], -7.f, "Suffix guard 1");
+
+    for (int y = 0; y < 2; ++y) {
+        for (int x = 0; x < 2; ++x) {
+            const cv::Vec3b pixel = roi.at<cv::Vec3b>(y, x);
+            const int index = y * 2 + x;
+            near(buffer[2 + index], pixel[2] / 255.f, "ROI red");
+            near(buffer[6 + index], pixel[1] / 255.f, "ROI green");
+            near(buffer[10 + index], pixel[0] / 255.f, "ROI blue");
+        }
+    }
+}
+
+void blendTilePreservesSpatialOrientationAtScaleTwo() {
+    const int width = 2;
+    const int height = 2;
+    const int tile = 3;
+    const int scale = 2;
+    const int overlap = 1;
+    cv::Mat accum(height * scale, width * scale, CV_32FC3, cv::Scalar(0, 0, 0));
+    cv::Mat weights(height * scale, width * scale, CV_32FC1, cv::Scalar(0));
+    cv::Mat sr(tile * scale, tile * scale, CV_32FC3);
+
+    for (int y = 0; y < sr.rows; ++y) {
+        for (int x = 0; x < sr.cols; ++x) {
+            sr.at<cv::Vec3f>(y, x) = cv::Vec3f(x / 10.f, y / 10.f, (x + y) / 20.f);
+        }
+    }
+
+    blendTile(accum, weights, sr, {0, 0}, tile, scale, overlap, width, height);
+    for (int y = 0; y < accum.rows; ++y) {
+        for (int x = 0; x < accum.cols; ++x) {
+            const float weight = weights.at<float>(y, x);
+            require(weight > 0.f, "Scaled tile leaves uncovered output pixel");
+            const auto actual = accum.at<cv::Vec3f>(y, x) / weight;
+            const auto expected = sr.at<cv::Vec3f>(y + overlap * scale, x + overlap * scale);
+            for (int channel = 0; channel < 3; ++channel) {
+                near(actual[channel], expected[channel], "Scaled tile spatial orientation");
+            }
+        }
+    }
+}
+
+void blendTileWithoutOverlapHasUnitWeights() {
+    cv::Mat accum(2, 2, CV_32FC3, cv::Scalar(0, 0, 0));
+    cv::Mat weights(2, 2, CV_32FC1, cv::Scalar(0));
+    cv::Mat sr(2, 2, CV_32FC3, cv::Scalar(0.3, 0.5, 0.7));
+
+    blendTile(accum, weights, sr, {0, 0}, 2, 1, 0, 2, 2);
+    for (int y = 0; y < 2; ++y) {
+        for (int x = 0; x < 2; ++x) {
+            near(weights.at<float>(y, x), 1.f, "No overlap weight");
+            for (int channel = 0; channel < 3; ++channel) {
+                near(accum.at<cv::Vec3f>(y, x)[channel], sr.at<cv::Vec3f>(y, x)[channel], "No overlap pixel");
+            }
+        }
+    }
+}
 }
 
 int main() {
@@ -122,6 +196,9 @@ int main() {
         blendSingleTileRetainsAllPixels();
         blendOverlappingTilesCoversUnevenImage();
         blendOverlappingTilesUsesWeightedAverage();
+        fillInputSupportsRoiAndPreservesBounds();
+        blendTilePreservesSpatialOrientationAtScaleTwo();
+        blendTileWithoutOverlapHasUnitWeights();
         std::cout << "Image tile tests passed\n";
         return 0;
     } catch (const std::exception& e) {
