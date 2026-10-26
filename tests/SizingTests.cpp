@@ -36,6 +36,25 @@ void Reject(F&& action, const char* message)
     throw std::runtime_error(message);
 }
 
+void Workspaces()
+{
+    const size_t gib = size_t(1) << 30;
+    Require(workspaceBytes(1.0) == gib, "One GiB workspace");
+    Require(workspaceBytes(4.0) == 4 * gib, "Default workspace");
+    Require(workspaceBytes(0.5) == gib / 2, "Fractional workspace");
+    Require(workspaceBytes(1.0 / (1ULL << 30)) == 1, "One byte workspace");
+
+    Reject([] { workspaceBytes(0.0); }, "Zero workspace accepted");
+    Reject([] { workspaceBytes(-1.0); }, "Negative workspace accepted");
+    Reject([] { workspaceBytes(std::numeric_limits<double>::quiet_NaN()); }, "NaN workspace accepted");
+    Reject([] { workspaceBytes(std::numeric_limits<double>::infinity()); }, "Infinite workspace accepted");
+    Reject([] { workspaceBytes(1e300); }, "Huge workspace accepted");
+    Reject([] { workspaceBytes(1e-300); }, "Sub-byte workspace accepted");
+
+    const double boundary = std::ldexp(1.0, std::numeric_limits<size_t>::digits - 30);
+    Reject([&] { workspaceBytes(boundary); }, "Size_t boundary accepted");
+}
+
 void Tiles()
 {
     const size_t gib = size_t(1) << 30;
@@ -70,6 +89,7 @@ int main()
 {
     try
     {
+        Workspaces();
         Tiles();
         Batches();
         std::cout << "Sizing tests passed\n";
