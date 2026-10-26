@@ -19,6 +19,7 @@ add_executable(trt_sr
   src/Engine.cpp
   src/Upscaler.cpp
   src/ImageTiles.cpp
+  src/TilePipeline.cpp
 )
 target_include_directories(trt_sr PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_include_directories(trt_sr PRIVATE "${TENSORRT_INCLUDE}" ${OpenCV_INCLUDE_DIRS})
@@ -61,4 +62,8 @@ if(BUILD_TESTING)
   target_include_directories(tile_pipeline_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" ${OpenCV_INCLUDE_DIRS})
   target_link_libraries(tile_pipeline_tests PRIVATE ${OpenCV_LIBS})
   add_test(NAME tile_pipeline COMMAND tile_pipeline_tests)
+  add_executable(tile_pipeline_progress_tests tests/TilePipelineProgressTests.cpp src/TilePipeline.cpp src/ImageTiles.cpp)
+  target_include_directories(tile_pipeline_progress_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(tile_pipeline_progress_tests PRIVATE ${OpenCV_LIBS})
+  add_test(NAME tile_pipeline_progress COMMAND tile_pipeline_progress_tests)
 endif()
