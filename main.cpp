@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
         const size_t outCount = inCount * static_cast<size_t>(o.scale) * o.scale;
         std::vector<std::unique_ptr<Worker>> workers;
         for (int i = 0; i < o.streams; ++i)
-            workers.emplace_back(std::make_unique<Worker>(engine.Get(), inCount, outCount, inType, outType));
+            workers.emplace_back(std::make_unique<Worker>(engine.Get(), inCount, outCount, inType, outType, inName, outName));
         const int width = image.cols * o.scale, height = image.rows * o.scale;
         cv::Mat accum(height, width, CV_32FC3, cv::Scalar(0, 0, 0));
         cv::Mat weights(height, width, CV_32FC1, cv::Scalar(0));
@@ -77,8 +77,8 @@ int main(int argc, char** argv) {
             if (jobs.size() == workers.size()) { consume(jobs.front()); jobs.pop_front(); }
             std::vector<Tile> tiles(all.begin() + start, all.begin() + end);
             Worker* worker = workers[group % workers.size()].get();
-            jobs.push_back(std::async(std::launch::async, [worker, &image, tiles = std::move(tiles), tile, batch, &o, &inName, &outName, inType, outType]() {
-                return runBatch(*worker, image, tiles, tile, batch, o.scale, o.overlap, inName, outName, inType, outType);
+            jobs.push_back(std::async(std::launch::async, [worker, &image, tiles = std::move(tiles), tile, batch, &o]() {
+                return worker->Run(image, tiles, tile, batch, o.scale, o.overlap);
             }));
         }
         while (!jobs.empty()) { consume(jobs.front()); jobs.pop_front(); }
