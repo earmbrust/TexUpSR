@@ -44,15 +44,13 @@ int autoTile(size_t freeBytes, int streams, int overlap)
     }
 
     const size_t perStream = freeBytes / static_cast<size_t>(streams);
-    const int candidate = perStream >= (size_t(2) << 30) ? 512
-        : perStream >= (size_t(768) << 20) ? 256 : 128;
+    const int candidate = perStream >= (size_t(2) << 30) ? 512 : perStream >= (size_t(768) << 20) ? 256 : 128;
     return std::max(candidate, static_cast<int>(required));
 }
 
 int autoBatch(size_t freeBytes, int tile, int scale, int streams, double workspaceGB)
 {
-    if (tile <= 0 || scale <= 0 || streams <= 0 ||
-        !std::isfinite(workspaceGB) || workspaceGB <= 0.0)
+    if (tile <= 0 || scale <= 0 || streams <= 0 || !std::isfinite(workspaceGB) || workspaceGB <= 0.0)
     {
         throw std::invalid_argument("Invalid automatic batch configuration");
     }
@@ -66,8 +64,8 @@ int autoBatch(size_t freeBytes, int tile, int scale, int streams, double workspa
     const size_t available = freeBytes > reserve ? freeBytes - reserve : freeBytes / 4;
     const long double tilePixels = static_cast<long double>(tile) * tile;
     const long double scalePixels = static_cast<long double>(scale) * scale;
-    const long double bytesPerBatch = 3.0L * tilePixels * (1.0L + scalePixels) *
-        sizeof(float) * 8.0L * streams;
+    const long double bytesPerBatch =
+        3.0L * tilePixels * (1.0L + scalePixels) * sizeof(float) * 8.0L * streams;
     const long double estimate = static_cast<long double>(available) / bytesPerBatch;
 
     if (estimate < 1.0L)

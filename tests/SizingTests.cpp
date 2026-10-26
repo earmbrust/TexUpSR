@@ -18,8 +18,7 @@ void Require(bool value, const char* message)
     }
 }
 
-template <typename F>
-void Reject(F&& action, const char* message)
+template <typename F> void Reject(F&& action, const char* message)
 {
     try
     {
@@ -75,15 +74,16 @@ void Batches()
     Require(autoBatch(0, 512, 4, 2, 4.0) == 1, "Zero memory batch");
     Require(autoBatch(gib, 512, 4, 2, 4.0) == 1, "Workspace reserve batch");
     Require(autoBatch(gib, 128, 2, 1, 1e300) == 1, "Huge workspace batch");
-    Require(autoBatch(std::numeric_limits<size_t>::max(),
-                      std::numeric_limits<int>::max(), std::numeric_limits<int>::max(),
-                      std::numeric_limits<int>::max(), 1.0) == 1, "Huge tile and scale batch");
+    Require(autoBatch(std::numeric_limits<size_t>::max(), std::numeric_limits<int>::max(),
+                      std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 1.0) == 1,
+            "Huge tile and scale batch");
     Reject([] { autoBatch(1024, 0, 2, 1, 1); }, "Zero tile accepted");
     Reject([] { autoBatch(1024, 4, -1, 1, 1); }, "Negative scale accepted");
     Reject([] { autoBatch(1024, 4, 2, 0, 1); }, "Zero streams accepted");
-    Reject([] { autoBatch(1024, 4, 2, 1, std::numeric_limits<double>::infinity()); }, "Infinity workspace accepted");
+    Reject([] { autoBatch(1024, 4, 2, 1, std::numeric_limits<double>::infinity()); },
+           "Infinity workspace accepted");
 }
-}
+} // namespace
 
 int main()
 {

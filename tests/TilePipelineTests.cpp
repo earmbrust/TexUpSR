@@ -25,7 +25,9 @@ void Require(bool value, const std::string& message)
 class FakeInference final : public Inference
 {
 public:
-    explicit FakeInference(float color) : color_(color) {}
+    explicit FakeInference(float color) : color_(color)
+    {
+    }
 
     BatchResult Run(const cv::Mat&, const std::vector<Tile>& tiles) override
     {
@@ -41,15 +43,23 @@ public:
         result.tiles = tiles;
         for (size_t i = 0; i < tiles.size(); ++i)
         {
-            result.images.emplace_back(8, 8, CV_32FC3,
-                                       cv::Scalar(color_, color_, color_));
+            result.images.emplace_back(8, 8, CV_32FC3, cv::Scalar(color_, color_, color_));
         }
         return result;
     }
 
-    void Fail() { fail_ = true; }
-    size_t Calls() const { return calls_.size(); }
-    const std::vector<std::vector<Tile>>& Batches() const { return calls_; }
+    void Fail()
+    {
+        fail_ = true;
+    }
+    size_t Calls() const
+    {
+        return calls_.size();
+    }
+    const std::vector<std::vector<Tile>>& Batches() const
+    {
+        return calls_;
+    }
 
 private:
     float color_;
@@ -70,7 +80,6 @@ void BatchesAndWorkers()
     Require(first.Calls() == 1 && second.Calls() == 1, "Worker scheduling");
     Require(first.Batches()[0].size() == 4, "First batch length");
     Require(second.Batches()[0].size() == 2, "Final batch length");
-
 
     for (int y = 0; y < output.rows; ++y)
     {
@@ -128,7 +137,9 @@ void RejectsDuplicateWorkers()
 class FailingWorker final : public Inference
 {
 public:
-    explicit FailingWorker(std::shared_future<void> started) : started_(std::move(started)) {}
+    explicit FailingWorker(std::shared_future<void> started) : started_(std::move(started))
+    {
+    }
 
     BatchResult Run(const cv::Mat&, const std::vector<Tile>&) override
     {
@@ -143,7 +154,9 @@ private:
 class PendingWorker final : public Inference
 {
 public:
-    explicit PendingWorker(std::promise<void>& started) : started_(started) {}
+    explicit PendingWorker(std::promise<void>& started) : started_(started)
+    {
+    }
 
     BatchResult Run(const cv::Mat&, const std::vector<Tile>& tiles) override
     {
@@ -159,7 +172,10 @@ public:
         return result;
     }
 
-    bool Completed() const { return completed_.load(); }
+    bool Completed() const
+    {
+        return completed_.load();
+    }
 
 private:
     std::promise<void>& started_;
@@ -201,11 +217,10 @@ void PropagatesFailures()
     }
     catch (const std::runtime_error& error)
     {
-        Require(std::string(error.what()) == "Simulated inference failure",
-                "Unexpected failure message");
+        Require(std::string(error.what()) == "Simulated inference failure", "Unexpected failure message");
     }
 }
-}
+} // namespace
 
 int main()
 {

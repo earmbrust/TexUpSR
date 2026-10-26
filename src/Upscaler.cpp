@@ -25,23 +25,15 @@ void* PinnedBuffer::Data() const
     return data_;
 }
 
-Worker::Worker(nvinfer1::ICudaEngine& engine, size_t inCount, size_t outCount,
-               nvinfer1::DataType inType, nvinfer1::DataType outType,
-               std::string inputName, std::string outputName,
-               int tile, int batch, int scale, int overlap)
-    : context_(engine.createExecutionContext()),
-      input_(TensorBytes(inCount, tensorElementBytes(inType))),
+Worker::Worker(nvinfer1::ICudaEngine& engine, size_t inCount, size_t outCount, nvinfer1::DataType inType,
+               nvinfer1::DataType outType, std::string inputName, std::string outputName, int tile, int batch,
+               int scale, int overlap)
+    : context_(engine.createExecutionContext()), input_(TensorBytes(inCount, tensorElementBytes(inType))),
       output_(TensorBytes(outCount, tensorElementBytes(outType))),
       hostInput_(TensorBytes(inCount, tensorElementBytes(inType))),
-      hostOutput_(TensorBytes(outCount, tensorElementBytes(outType))),
-      inputName_(std::move(inputName)),
-      outputName_(std::move(outputName)),
-      inputType_(inType),
-      outputType_(outType),
-      tile_(tile),
-      batch_(batch),
-      scale_(scale),
-      overlap_(overlap)
+      hostOutput_(TensorBytes(outCount, tensorElementBytes(outType))), inputName_(std::move(inputName)),
+      outputName_(std::move(outputName)), inputType_(inType), outputType_(outType), tile_(tile),
+      batch_(batch), scale_(scale), overlap_(overlap)
 {
     if (!context_)
     {
@@ -95,31 +87,34 @@ BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
 
     const auto dims = context_->getTensorShape(outputName_.c_str());
 
-    if (dims.nbDims != 4 || dims.d[0] != batch || dims.d[1] != 3 ||
-        dims.d[2] != outTile || dims.d[3] != outTile)
+    if (dims.nbDims != 4 || dims.d[0] != batch || dims.d[1] != 3 || dims.d[2] != outTile ||
+        dims.d[3] != outTile)
     {
         throw std::runtime_error("Model output shape does not match requested scale");
     }
 
     try
     {
-    cudaCheck(cudaMemcpyAsync(input_.p, hostInput_.Data(), inPer * batch * tensorElementBytes(inputType_),
-                              cudaMemcpyHostToDevice, stream_.value), "H2D batch");
+        cudaCheck(cudaMemcpyAsync(input_.p, hostInput_.Data(), inPer * batch * tensorElementBytes(inputType_),
+                                  cudaMemcpyHostToDevice, stream_.value),
+                  "H2D batch");
 
-    if (!context_->setTensorAddress(inputName_.c_str(), input_.p) ||
-        !context_->setTensorAddress(outputName_.c_str(), output_.p))
-    {
-        throw std::runtime_error("Cannot bind TensorRT tensor addresses");
-    }
+        if (!context_->setTensorAddress(inputName_.c_str(), input_.p) ||
+            !context_->setTensorAddress(outputName_.c_str(), output_.p))
+        {
+            throw std::runtime_error("Cannot bind TensorRT tensor addresses");
+        }
 
-    if (!context_->enqueueV3(stream_.value))
-    {
-        throw std::runtime_error("TensorRT enqueueV3 failed");
-    }
+        if (!context_->enqueueV3(stream_.value))
+        {
+            throw std::runtime_error("TensorRT enqueueV3 failed");
+        }
 
-    cudaCheck(cudaMemcpyAsync(hostOutput_.Data(), output_.p, outPer * batch * tensorElementBytes(outputType_),
-                              cudaMemcpyDeviceToHost, stream_.value), "D2H batch");
-    cudaCheck(cudaStreamSynchronize(stream_.value), "Batch stream synchronization");
+        cudaCheck(cudaMemcpyAsync(hostOutput_.Data(), output_.p,
+                                  outPer * batch * tensorElementBytes(outputType_), cudaMemcpyDeviceToHost,
+                                  stream_.value),
+                  "D2H batch");
+        cudaCheck(cudaStreamSynchronize(stream_.value), "Batch stream synchronization");
     }
     catch (...)
     {
@@ -134,14 +129,14 @@ BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
     {
         cv::Mat sr(outTile, outTile, CV_32FC3);
         const float* data32 = outputType_ == nvinfer1::DataType::kFLOAT
-            ? static_cast<const float*>(hostOutput_.Data()) + i * outPer : nullptr;
+                                  ? static_cast<const float*>(hostOutput_.Data()) + i * outPer
+                                  : nullptr;
         const __half* data16 = outputType_ == nvinfer1::DataType::kHALF
-            ? static_cast<const __half*>(hostOutput_.Data()) + i * outPer : nullptr;
+                                   ? static_cast<const __half*>(hostOutput_.Data()) + i * outPer
+                                   : nullptr;
 
         auto sample = [&](size_t index) -> float
-        {
-            return data32 ? data32[index] : __half2float(data16[index]);
-        };
+        { return data32 ? data32[index] : __half2float(data16[index]); };
 
         for (int y = 0; y < outTile; ++y)
         {

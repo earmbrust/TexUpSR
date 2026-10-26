@@ -43,10 +43,9 @@ private:
 class Worker final : public Inference
 {
 public:
-    Worker(nvinfer1::ICudaEngine& engine, size_t inCount, size_t outCount,
-           nvinfer1::DataType inType, nvinfer1::DataType outType,
-           std::string inputName, std::string outputName,
-           int tile, int batch, int scale, int overlap);
+    Worker(nvinfer1::ICudaEngine& engine, size_t inCount, size_t outCount, nvinfer1::DataType inType,
+           nvinfer1::DataType outType, std::string inputName, std::string outputName, int tile, int batch,
+           int scale, int overlap);
 
     ~Worker() override;
 

@@ -37,15 +37,15 @@ int main(int argc, char** argv)
         size_t totalBytes = 0;
         cudaCheck(cudaMemGetInfo(&freeBytes, &totalBytes), "cudaMemGetInfo");
 
-        const int tile = options.tile > 0 ? options.tile
-            : autoTile(freeBytes, options.streams, options.overlap);
-        const int batch = options.batch > 0 ? options.batch
-            : autoBatch(freeBytes, tile, options.scale, options.streams, options.workspace);
+        const int tile =
+            options.tile > 0 ? options.tile : autoTile(freeBytes, options.streams, options.overlap);
+        const int batch = options.batch > 0
+                              ? options.batch
+                              : autoBatch(freeBytes, tile, options.scale, options.streams, options.workspace);
 
         if (!options.quiet)
         {
-            std::cout << "Tile " << tile << ", batch " << batch
-                      << ", streams " << options.streams << '\n';
+            std::cout << "Tile " << tile << ", batch " << batch << ", streams " << options.streams << '\n';
         }
 
         if (tile <= 0 || batch <= 0 || static_cast<int64_t>(options.overlap) * 2 >= tile)
@@ -73,10 +73,8 @@ int main(int argc, char** argv)
         for (int i = 0; i < options.streams; ++i)
         {
             workers.emplace_back(std::make_unique<Worker>(
-                engine.Get(), inputCount, outputCount,
-                engine.InputType(), engine.OutputType(),
-                engine.InputName(), engine.OutputName(),
-                tile, batch, options.scale, options.overlap));
+                engine.Get(), inputCount, outputCount, engine.InputType(), engine.OutputType(),
+                engine.InputName(), engine.OutputName(), tile, batch, options.scale, options.overlap));
             inference.push_back(workers.back().get());
         }
 
@@ -84,25 +82,25 @@ int main(int argc, char** argv)
         bool debugSaved = false;
 
         const cv::Mat result = pipeline.Run(image,
-            [&](const BatchResult& completed, size_t processed, size_t total)
-            {
-                if (options.debug && !debugSaved && !completed.images.empty())
-                {
-                    cv::Mat debug;
-                    completed.images.front().convertTo(debug, CV_8UC3, 255.0);
-                    if (!cv::imwrite("debug_first_tile.png", debug))
-                    {
-                        throw std::runtime_error("Cannot save debug tile");
-                    }
-                    debugSaved = true;
-                }
+                                            [&](const BatchResult& completed, size_t processed, size_t total)
+                                            {
+                                                if (options.debug && !debugSaved && !completed.images.empty())
+                                                {
+                                                    cv::Mat debug;
+                                                    completed.images.front().convertTo(debug, CV_8UC3, 255.0);
+                                                    if (!cv::imwrite("debug_first_tile.png", debug))
+                                                    {
+                                                        throw std::runtime_error("Cannot save debug tile");
+                                                    }
+                                                    debugSaved = true;
+                                                }
 
-                if (!options.quiet)
-                {
-                    std::cout << "Processed " << processed << "/" << total
-                              << " tiles\r" << std::flush;
-                }
-            });
+                                                if (!options.quiet)
+                                                {
+                                                    std::cout << "Processed " << processed << "/" << total
+                                                              << " tiles\r" << std::flush;
+                                                }
+                                            });
 
         cv::Mat output;
         result.convertTo(output, CV_8UC3, 255.0);

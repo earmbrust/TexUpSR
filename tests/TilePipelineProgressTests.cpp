@@ -9,7 +9,9 @@
 class FakeInference final : public Inference
 {
 public:
-    explicit FakeInference(float value) : value_(value) {}
+    explicit FakeInference(float value) : value_(value)
+    {
+    }
 
     BatchResult Run(const cv::Mat&, const std::vector<Tile>& tiles) override
     {
@@ -17,8 +19,7 @@ public:
         result.tiles = tiles;
         for (size_t i = 0; i < tiles.size(); ++i)
         {
-            result.images.emplace_back(8, 8, CV_32FC3,
-                                       cv::Scalar(value_, value_, value_));
+            result.images.emplace_back(8, 8, CV_32FC3, cv::Scalar(value_, value_, value_));
         }
         return result;
     }
@@ -36,18 +37,17 @@ int main()
     std::vector<size_t> completed;
     size_t expected = 0;
     const cv::Mat output = pipeline.Run(input,
-        [&](const BatchResult& batch, size_t count, size_t total)
-        {
-            if (batch.images.size() != batch.tiles.size())
-            {
-                throw std::runtime_error("Bad progress batch");
-            }
-            completed.push_back(count);
-            expected = total;
-        });
+                                        [&](const BatchResult& batch, size_t count, size_t total)
+                                        {
+                                            if (batch.images.size() != batch.tiles.size())
+                                            {
+                                                throw std::runtime_error("Bad progress batch");
+                                            }
+                                            completed.push_back(count);
+                                            expected = total;
+                                        });
 
-    if (completed != std::vector<size_t>({4, 6}) || expected != 6 ||
-        output.rows != 6 || output.cols != 10)
+    if (completed != std::vector<size_t>({4, 6}) || expected != 6 || output.rows != 6 || output.cols != 10)
     {
         throw std::runtime_error("Incorrect batch progress");
     }
