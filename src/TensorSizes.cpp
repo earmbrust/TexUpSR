@@ -14,7 +14,7 @@ size_t Multiply(size_t left, size_t right)
     }
     return left * right;
 }
-}
+} // namespace
 
 TensorSizes TensorElements(int tile, int batch, int scale)
 {

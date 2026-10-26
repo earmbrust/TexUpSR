@@ -9,10 +9,8 @@
 #include <stdexcept>
 #include <utility>
 
-TilePipeline::TilePipeline(int tile, int batch, int scale, int overlap,
-                           std::vector<Inference*> workers)
-    : tile_(tile), batch_(batch), scale_(scale), overlap_(overlap),
-      workers_(std::move(workers))
+TilePipeline::TilePipeline(int tile, int batch, int scale, int overlap, std::vector<Inference*> workers)
+    : tile_(tile), batch_(batch), scale_(scale), overlap_(overlap), workers_(std::move(workers))
 {
     if (tile_ <= 0 || batch_ <= 0 || scale_ <= 0 || overlap_ < 0 ||
         static_cast<int64_t>(overlap_) * 2 >= tile_ || workers_.empty())
@@ -56,10 +54,8 @@ cv::Mat TilePipeline::Run(const cv::Mat& image, const Progress& progress) const
         throw std::overflow_error("Upscaled dimensions overflow int");
     }
 
-    cv::Mat accum(static_cast<int>(height), static_cast<int>(width),
-                  CV_32FC3, cv::Scalar(0, 0, 0));
-    cv::Mat weights(static_cast<int>(height), static_cast<int>(width),
-                    CV_32FC1, cv::Scalar(0));
+    cv::Mat accum(static_cast<int>(height), static_cast<int>(width), CV_32FC3, cv::Scalar(0, 0, 0));
+    cv::Mat weights(static_cast<int>(height), static_cast<int>(width), CV_32FC1, cv::Scalar(0));
 
     const int stride = tile_ - 2 * overlap_;
     std::vector<Tile> tiles;
@@ -86,14 +82,14 @@ cv::Mat TilePipeline::Run(const cv::Mat& image, const Progress& progress) const
         for (size_t i = 0; i < expected.size(); ++i)
         {
             if (result.tiles[i].x != expected[i].x || result.tiles[i].y != expected[i].y ||
-                result.images[i].type() != CV_32FC3 ||
-                result.images[i].cols != outTile || result.images[i].rows != outTile)
+                result.images[i].type() != CV_32FC3 || result.images[i].cols != outTile ||
+                result.images[i].rows != outTile)
             {
                 throw std::runtime_error("Inference returned an invalid tile");
             }
 
-            blendTile(accum, weights, result.images[i], expected[i], tile_, scale_,
-                      overlap_, image.cols, image.rows);
+            blendTile(accum, weights, result.images[i], expected[i], tile_, scale_, overlap_, image.cols,
+                      image.rows);
         }
 
         processed += result.tiles.size();
@@ -119,8 +115,8 @@ cv::Mat TilePipeline::Run(const cv::Mat& image, const Progress& progress) const
         pending.emplace_back(tiles.begin() + start, tiles.begin() + end);
         auto* worker = workers_[group % workers_.size()];
         const auto batchTiles = pending.back();
-        jobs.emplace_back(std::async(std::launch::async,
-            [worker, &image, batchTiles]() { return worker->Run(image, batchTiles); }));
+        jobs.emplace_back(std::async(std::launch::async, [worker, &image, batchTiles]()
+                                     { return worker->Run(image, batchTiles); }));
     }
 
     while (!jobs.empty())

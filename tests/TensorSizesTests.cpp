@@ -15,8 +15,7 @@ void Require(bool value, const char* message)
     }
 }
 
-template <typename F>
-void Reject(F&& action)
+template <typename F> void Reject(F&& action)
 {
     try
     {
@@ -32,7 +31,7 @@ void Reject(F&& action)
     }
     throw std::runtime_error("Invalid tensor size was accepted");
 }
-}
+} // namespace
 
 int main()
 {
@@ -46,8 +45,7 @@ int main()
         Reject([] { TensorElements(0, 1, 1); });
         Reject([] { TensorElements(4, -1, 1); });
         Reject([] { TensorElements(4, 1, 0); });
-        Reject([] { TensorElements(std::numeric_limits<int>::max(),
-                                   std::numeric_limits<int>::max(), 4); });
+        Reject([] { TensorElements(std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 4); });
         Reject([] { TensorBytes(std::numeric_limits<size_t>::max(), 2); });
         Reject([] { TensorBytes(1, 0); });
         std::cout << "Tensor sizing tests passed\n";

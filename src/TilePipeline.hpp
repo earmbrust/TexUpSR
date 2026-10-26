@@ -11,8 +11,7 @@
 class TilePipeline
 {
 public:
-    TilePipeline(int tile, int batch, int scale, int overlap,
-                 std::vector<Inference*> workers);
+    TilePipeline(int tile, int batch, int scale, int overlap, std::vector<Inference*> workers);
 
     using Progress = std::function<void(const BatchResult&, size_t, size_t)>;
 

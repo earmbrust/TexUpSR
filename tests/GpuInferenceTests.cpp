@@ -72,7 +72,8 @@ int CheckGpu()
     const cudaError_t initialize = cudaSetDevice(0);
     if (initialize != cudaSuccess)
     {
-        throw std::runtime_error(std::string("CUDA device initialization failed: ") + cudaGetErrorString(initialize));
+        throw std::runtime_error(std::string("CUDA device initialization failed: ") +
+                                 cudaGetErrorString(initialize));
     }
     return 0;
 }
@@ -94,8 +95,8 @@ void VerifyPixels(const cv::Mat& actual, const cv::Mat& source)
                 if (std::abs(pixel[channel] - value) > 0.002f)
                 {
                     throw std::runtime_error("GPU output differs from expected pixel at " +
-                                             std::to_string(x) + "," + std::to_string(y) +
-                                             " channel " + std::to_string(channel));
+                                             std::to_string(x) + "," + std::to_string(y) + " channel " +
+                                             std::to_string(channel));
                 }
             }
         }
@@ -120,10 +121,9 @@ void RunInference(const fs::path& modelPath, const fs::path& cachePath)
     {
         for (int x = 0; x < input.cols; ++x)
         {
-            input.at<cv::Vec3b>(y, x) = cv::Vec3b(
-                static_cast<unsigned char>(20 + x * 9),
-                static_cast<unsigned char>(30 + y * 13),
-                static_cast<unsigned char>(40 + x * 7 + y * 5));
+            input.at<cv::Vec3b>(y, x) =
+                cv::Vec3b(static_cast<unsigned char>(20 + x * 9), static_cast<unsigned char>(30 + y * 13),
+                          static_cast<unsigned char>(40 + x * 7 + y * 5));
         }
     }
 
@@ -136,16 +136,15 @@ void RunInference(const fs::path& modelPath, const fs::path& cachePath)
         for (int i = 0; i < options.streams; ++i)
         {
             workers.emplace_back(std::make_unique<Worker>(
-                engine.Get(), elements, elements, engine.InputType(), engine.OutputType(),
-                engine.InputName(), engine.OutputName(), options.tile, options.batch,
-                options.scale, options.overlap));
+                engine.Get(), elements, elements, engine.InputType(), engine.OutputType(), engine.InputName(),
+                engine.OutputName(), options.tile, options.batch, options.scale, options.overlap));
             inference.push_back(workers.back().get());
         }
         if (pass == 0)
         {
             Worker invalid(engine.Get(), elements, elements, engine.InputType(), engine.OutputType(),
-                           engine.InputName(), "missing_output", options.tile, options.batch,
-                           options.scale, options.overlap);
+                           engine.InputName(), "missing_output", options.tile, options.batch, options.scale,
+                           options.overlap);
             bool rejected = false;
             try
             {
@@ -177,7 +176,7 @@ void RunInference(const fs::path& modelPath, const fs::path& cachePath)
     }
     Require(rejected, "Corrupt engine cache was accepted");
 }
-}
+} // namespace
 
 int main()
 {
@@ -191,8 +190,8 @@ int main()
 
         const fs::path modelPath(TEXUPSR_GPU_MODEL_PATH);
         Require(fs::exists(modelPath), "GPU test ONNX fixture is missing");
-        const fs::path directory = fs::temp_directory_path() /
-            ("texupsr-gpu-test-" + std::to_string(GetCurrentProcessId()));
+        const fs::path directory =
+            fs::temp_directory_path() / ("texupsr-gpu-test-" + std::to_string(GetCurrentProcessId()));
         fs::create_directories(directory);
         const fs::path cachePath = directory / "relu.plan";
         try

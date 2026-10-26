@@ -67,7 +67,8 @@ std::vector<char> Engine::Build(const Options& options, int tile, int batch, Log
     TrtPtr<nvinfer1::INetworkDefinition> network(builder->createNetworkV2(flags));
     TrtPtr<nvonnxparser::IParser> parser(nvonnxparser::createParser(*network, logger));
 
-    if (!parser || !parser->parseFromFile(options.model.c_str(), static_cast<int>(nvinfer1::ILogger::Severity::kWARNING)))
+    if (!parser || !parser->parseFromFile(options.model.c_str(),
+                                          static_cast<int>(nvinfer1::ILogger::Severity::kWARNING)))
     {
         throw std::runtime_error("ONNX parse failed: " + options.model);
     }
@@ -92,8 +93,7 @@ std::vector<char> Engine::Build(const Options& options, int tile, int batch, Log
     }
 
     TrtPtr<nvinfer1::IBuilderConfig> config(builder->createBuilderConfig());
-    config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE,
-                               workspaceBytes(options.workspace));
+    config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, workspaceBytes(options.workspace));
 
     if (builder->platformHasFastFp16())
     {
@@ -128,10 +128,11 @@ std::vector<char> Engine::Build(const Options& options, int tile, int batch, Log
 
 Engine::Engine(const Options& options, int tile, int batch, Logger& logger)
 {
-    const fs::path path = options.engine.empty()
-        ? fs::path("engines") / (fs::path(options.model).stem().string() + "_t" + std::to_string(tile) +
-                                 "_b" + std::to_string(batch) + ".plan")
-        : fs::path(options.engine);
+    const fs::path path =
+        options.engine.empty()
+            ? fs::path("engines") / (fs::path(options.model).stem().string() + "_t" + std::to_string(tile) +
+                                     "_b" + std::to_string(batch) + ".plan")
+            : fs::path(options.engine);
 
     std::vector<char> bytes;
 
@@ -190,10 +191,8 @@ Engine::Engine(const Options& options, int tile, int batch, Logger& logger)
 
     if (options.verbose)
     {
-        std::cout << "Tensor formats: input "
-                  << (inputType_ == nvinfer1::DataType::kHALF ? "FP16" : "FP32")
-                  << ", output " << (outputType_ == nvinfer1::DataType::kHALF ? "FP16" : "FP32")
-                  << '\n';
+        std::cout << "Tensor formats: input " << (inputType_ == nvinfer1::DataType::kHALF ? "FP16" : "FP32")
+                  << ", output " << (outputType_ == nvinfer1::DataType::kHALF ? "FP16" : "FP32") << '\n';
     }
 }
 
