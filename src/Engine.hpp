@@ -1,13 +1,33 @@
 // Copyright (c) 2025-2026 Elden Armbrust. MIT License.
 #pragma once
+
 #include "Options.hpp"
 #include "Resources.hpp"
+
+#include <filesystem>
 #include <string>
 #include <vector>
-struct EngineState {
-    TrtPtr<nvinfer1::IRuntime> runtime;
-    TrtPtr<nvinfer1::ICudaEngine> engine;
-    std::string inName, outName;
-    nvinfer1::DataType inType, outType;
+
+class Engine
+{
+public:
+    Engine(const Options& options, int tile, int batch, Logger& logger);
+
+    nvinfer1::ICudaEngine& Get() const;
+    const std::string& InputName() const;
+    const std::string& OutputName() const;
+    nvinfer1::DataType InputType() const;
+    nvinfer1::DataType OutputType() const;
+
+private:
+    static std::vector<char> Read(const std::filesystem::path& path);
+    static void Write(const std::filesystem::path& path, const std::vector<char>& data);
+    static std::vector<char> Build(const Options& options, int tile, int batch, Logger& logger);
+
+    TrtPtr<nvinfer1::IRuntime> runtime_;
+    TrtPtr<nvinfer1::ICudaEngine> engine_;
+    std::string inputName_;
+    std::string outputName_;
+    nvinfer1::DataType inputType_{};
+    nvinfer1::DataType outputType_{};
 };
-EngineState loadEngine(const Options& o, int tile, int batch, Logger& logger);
