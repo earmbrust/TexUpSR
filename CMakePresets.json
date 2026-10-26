@@ -32,6 +32,21 @@
         "TensorRT_ROOT": "$env{TENSORRT_ROOT}",
         "CUDAToolkit_ROOT": "$env{CUDA_PATH}"
       }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Linux - Ninja Release (system or custom NVIDIA SDK)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-linux",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -39,6 +54,10 @@
       "name": "windows-release",
       "configurePreset": "windows-vs2026",
       "configuration": "Release"
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release"
     }
   ]
 }
