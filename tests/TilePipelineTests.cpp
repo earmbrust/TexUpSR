@@ -1,7 +1,11 @@
 // Copyright (c) 2025-2026 Elden Armbrust. MIT License.
 #include "TilePipeline.hpp"
 
+#include <atomic>
+#include <chrono>
 #include <cmath>
+#include <future>
+#include <thread>
 #include <iostream>
 #include <mutex>
 #include <stdexcept>
@@ -107,6 +111,83 @@ void RejectsBadInputs()
     }
 }
 
+void RejectsDuplicateWorkers()
+{
+    FakeInference fake(0.25f);
+
+    try
+    {
+        TilePipeline pipeline(4, 2, 2, 1, {&fake, &fake});
+        throw std::runtime_error("Duplicate worker accepted");
+    }
+    catch (const std::invalid_argument&)
+    {
+    }
+}
+
+class FailingWorker final : public Inference
+{
+public:
+    explicit FailingWorker(std::shared_future<void> started) : started_(std::move(started)) {}
+
+    BatchResult Run(const cv::Mat&, const std::vector<Tile>&) override
+    {
+        started_.wait();
+        throw std::runtime_error("Expected worker failure");
+    }
+
+private:
+    std::shared_future<void> started_;
+};
+
+class PendingWorker final : public Inference
+{
+public:
+    explicit PendingWorker(std::promise<void>& started) : started_(started) {}
+
+    BatchResult Run(const cv::Mat&, const std::vector<Tile>& tiles) override
+    {
+        started_.set_value();
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        completed_.store(true);
+        BatchResult result;
+        result.tiles = tiles;
+        for (size_t i = 0; i < tiles.size(); ++i)
+        {
+            result.images.emplace_back(8, 8, CV_32FC3, cv::Scalar(0.25f, 0.25f, 0.25f));
+        }
+        return result;
+    }
+
+    bool Completed() const { return completed_.load(); }
+
+private:
+    std::promise<void>& started_;
+    std::atomic<bool> completed_{false};
+};
+
+void WaitsForPendingWorkerOnFailure()
+{
+    std::promise<void> started;
+    FailingWorker failing(started.get_future().share());
+    PendingWorker pending(started);
+    TilePipeline pipeline(4, 1, 2, 1, {&failing, &pending});
+    const cv::Mat image(2, 4, CV_8UC3, cv::Scalar(0, 0, 0));
+    bool failed = false;
+
+    try
+    {
+        pipeline.Run(image);
+    }
+    catch (const std::runtime_error& error)
+    {
+        failed = std::string(error.what()) == "Expected worker failure";
+    }
+
+    Require(failed, "Worker failure was not propagated");
+    Require(pending.Completed(), "Pipeline returned before pending worker completed");
+}
+
 void PropagatesFailures()
 {
     FakeInference fake(0.25f);
@@ -133,6 +214,8 @@ int main()
         BatchesAndWorkers();
         RejectsBadInputs();
         PropagatesFailures();
+        RejectsDuplicateWorkers();
+        WaitsForPendingWorkerOnFailure();
         std::cout << "Tile pipeline tests passed\n";
         return 0;
     }

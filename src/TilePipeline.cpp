@@ -27,6 +27,17 @@ TilePipeline::TilePipeline(int tile, int batch, int scale, int overlap,
             throw std::invalid_argument("Null inference worker");
         }
     }
+
+    for (size_t i = 0; i < workers_.size(); ++i)
+    {
+        for (size_t j = 0; j < i; ++j)
+        {
+            if (workers_[i] == workers_[j])
+            {
+                throw std::invalid_argument("Duplicate inference worker");
+            }
+        }
+    }
 }
 
 cv::Mat TilePipeline::Run(const cv::Mat& image, const Progress& progress) const
