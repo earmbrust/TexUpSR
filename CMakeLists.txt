@@ -18,6 +18,7 @@ add_executable(trt_sr
   src/Options.cpp
   src/Engine.cpp
   src/Upscaler.cpp
+  src/TensorSizes.cpp
   src/Sizing.cpp
   src/ImageTiles.cpp
   src/TilePipeline.cpp
@@ -71,6 +72,7 @@ if(BUILD_TESTING)
     tests/GpuInferenceTests.cpp
     src/Engine.cpp
     src/Upscaler.cpp
+  src/TensorSizes.cpp
     src/Sizing.cpp
   src/Sizing.cpp
     src/TilePipeline.cpp
@@ -108,4 +110,10 @@ if(BUILD_TESTING)
   add_executable(sizing_tests tests/SizingTests.cpp src/Sizing.cpp)
   target_include_directories(sizing_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   add_test(NAME sizing COMMAND sizing_tests)
+endif()
+
+if(BUILD_TESTING)
+  add_executable(tensor_sizes_tests tests/TensorSizesTests.cpp src/TensorSizes.cpp)
+  target_include_directories(tensor_sizes_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  add_test(NAME tensor_sizes COMMAND tensor_sizes_tests)
 endif()

@@ -2,6 +2,7 @@
 #include "Engine.hpp"
 #include "Options.hpp"
 #include "Sizing.hpp"
+#include "TensorSizes.hpp"
 #include "TilePipeline.hpp"
 #include "Upscaler.hpp"
 
@@ -60,8 +61,9 @@ int main(int argc, char** argv)
         }
 
         Engine engine(options, tile, batch, logger);
-        const size_t inputCount = static_cast<size_t>(batch) * 3 * tile * tile;
-        const size_t outputCount = inputCount * static_cast<size_t>(options.scale) * options.scale;
+        const auto tensors = TensorElements(tile, batch, options.scale);
+        const size_t inputCount = tensors.input;
+        const size_t outputCount = tensors.output;
 
         std::vector<std::unique_ptr<Worker>> workers;
         std::vector<Inference*> inference;
