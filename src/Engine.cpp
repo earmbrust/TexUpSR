@@ -1,5 +1,6 @@
 // Copyright (c) 2025-2026 Elden Armbrust. MIT License.
 #include "Engine.hpp"
+#include "Sizing.hpp"
 #include "Upscaler.hpp"
 
 #include <NvOnnxParser.h>
@@ -92,7 +93,7 @@ std::vector<char> Engine::Build(const Options& options, int tile, int batch, Log
 
     TrtPtr<nvinfer1::IBuilderConfig> config(builder->createBuilderConfig());
     config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE,
-                               static_cast<size_t>(options.workspace * 1024.0 * 1024 * 1024));
+                               workspaceBytes(options.workspace));
 
     if (builder->platformHasFastFp16())
     {

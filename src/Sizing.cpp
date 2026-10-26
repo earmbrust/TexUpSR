@@ -7,6 +7,29 @@
 #include <limits>
 #include <stdexcept>
 
+size_t workspaceBytes(double gigabytes)
+{
+    if (!std::isfinite(gigabytes) || gigabytes <= 0.0)
+    {
+        throw std::invalid_argument("Invalid TensorRT workspace size");
+    }
+
+    const long double bytes = static_cast<long double>(gigabytes) * (1ULL << 30);
+    const long double limit = std::ldexp(1.0L, std::numeric_limits<size_t>::digits);
+
+    if (bytes >= limit)
+    {
+        throw std::overflow_error("TensorRT workspace size exceeds size_t range");
+    }
+
+    if (bytes < 1.0L)
+    {
+        throw std::invalid_argument("TensorRT workspace must be at least one byte");
+    }
+
+    return static_cast<size_t>(bytes);
+}
+
 int autoTile(size_t freeBytes, int streams, int overlap)
 {
     if (streams <= 0 || overlap < 0)
