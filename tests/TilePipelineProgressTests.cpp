@@ -2,6 +2,7 @@
 #include "TilePipeline.hpp"
 
 #include <opencv2/core.hpp>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -30,26 +31,35 @@ private:
 
 int main()
 {
-    FakeInference first(0.25f);
-    FakeInference second(0.5f);
-    TilePipeline pipeline(4, 4, 2, 1, {&first, &second});
-    const cv::Mat input(3, 5, CV_8UC3, cv::Scalar(0, 0, 0));
-    std::vector<size_t> completed;
-    size_t expected = 0;
-    const cv::Mat output = pipeline.Run(input,
-                                        [&](const BatchResult& batch, size_t count, size_t total)
-                                        {
-                                            if (batch.images.size() != batch.tiles.size())
-                                            {
-                                                throw std::runtime_error("Bad progress batch");
-                                            }
-                                            completed.push_back(count);
-                                            expected = total;
-                                        });
-
-    if (completed != std::vector<size_t>({4, 6}) || expected != 6 || output.rows != 6 || output.cols != 10)
+    try
     {
-        throw std::runtime_error("Incorrect batch progress");
+        FakeInference first(0.25f);
+        FakeInference second(0.5f);
+        TilePipeline pipeline(4, 4, 2, 1, {&first, &second});
+        const cv::Mat input(3, 5, CV_8UC3, cv::Scalar(0, 0, 0));
+        std::vector<size_t> completed;
+        size_t expected = 0;
+        const cv::Mat output = pipeline.Run(input,
+                                            [&](const BatchResult& batch, size_t count, size_t total)
+                                            {
+                                                if (batch.images.size() != batch.tiles.size())
+                                                {
+                                                    throw std::runtime_error("Bad progress batch");
+                                                }
+                                                completed.push_back(count);
+                                                expected = total;
+                                            });
+
+        if (completed != std::vector<size_t>({4, 6}) || expected != 6 || output.rows != 6 ||
+            output.cols != 10)
+        {
+            throw std::runtime_error("Incorrect batch progress");
+        }
+        return 0;
     }
-    return 0;
+    catch (const std::exception& error)
+    {
+        std::cerr << "Tile pipeline progress tests failed: " << error.what() << '\n';
+        return 1;
+    }
 }
