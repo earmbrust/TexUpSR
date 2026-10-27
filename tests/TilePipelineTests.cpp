@@ -1,4 +1,5 @@
 // Copyright (c) 2025-2026 Elden Armbrust. MIT License.
+#include <gtest/gtest.h>
 #include "TilePipeline.hpp"
 
 #include <atomic>
@@ -68,7 +69,7 @@ private:
     std::vector<std::vector<Tile>> calls_;
 };
 
-void BatchesAndWorkers()
+TEST(TilePipeline, BatchesAndWorkers)
 {
     FakeInference first(0.25f);
     FakeInference second(0.25f);
@@ -94,7 +95,7 @@ void BatchesAndWorkers()
     }
 }
 
-void RejectsBadInputs()
+TEST(TilePipeline, RejectsBadInputs)
 {
     FakeInference fake(0.25f);
     for (const auto& workers : {std::vector<Inference*>{}, std::vector<Inference*>{nullptr}})
@@ -120,7 +121,7 @@ void RejectsBadInputs()
     }
 }
 
-void RejectsDuplicateWorkers()
+TEST(TilePipeline, RejectsDuplicateWorkers)
 {
     FakeInference fake(0.25f);
 
@@ -182,7 +183,7 @@ private:
     std::atomic<bool> completed_{false};
 };
 
-void WaitsForPendingWorkerOnFailure()
+TEST(TilePipeline, WaitsForPendingWorkerOnFailure)
 {
     std::promise<void> started;
     FailingWorker failing(started.get_future().share());
@@ -204,7 +205,7 @@ void WaitsForPendingWorkerOnFailure()
     Require(pending.Completed(), "Pipeline returned before pending worker completed");
 }
 
-void PropagatesFailures()
+TEST(TilePipeline, PropagatesFailures)
 {
     FakeInference fake(0.25f);
     fake.Fail();
@@ -220,23 +221,88 @@ void PropagatesFailures()
         Require(std::string(error.what()) == "Simulated inference failure", "Unexpected failure message");
     }
 }
-} // namespace
-
-int main()
+class InvalidResultInference final : public Inference
 {
-    try
+public:
+    enum class Error
     {
-        BatchesAndWorkers();
-        RejectsBadInputs();
-        PropagatesFailures();
-        RejectsDuplicateWorkers();
-        WaitsForPendingWorkerOnFailure();
-        std::cout << "Tile pipeline tests passed\n";
-        return 0;
+        TileCount,
+        ImageCount,
+        Position,
+        Type,
+        Dimensions
+    };
+
+    explicit InvalidResultInference(Error error) : error_(error)
+    {
     }
-    catch (const std::exception& error)
+
+    BatchResult Run(const cv::Mat&, const std::vector<Tile>& tiles) override
     {
-        std::cerr << "Tile pipeline tests failed: " << error.what() << '\n';
-        return 1;
+        BatchResult result;
+        result.tiles = tiles;
+        for (size_t i = 0; i < tiles.size(); ++i)
+        {
+            result.images.emplace_back(8, 8, CV_32FC3, cv::Scalar(0.25f, 0.25f, 0.25f));
+        }
+
+        switch (error_)
+        {
+            case Error::TileCount:
+                result.tiles.pop_back();
+                break;
+            case Error::ImageCount:
+                result.images.pop_back();
+                break;
+            case Error::Position:
+                ++result.tiles.front().x;
+                break;
+            case Error::Type:
+                result.images.front() = cv::Mat(8, 8, CV_8UC3);
+                break;
+            case Error::Dimensions:
+                result.images.front() = cv::Mat(7, 8, CV_32FC3);
+                break;
+        }
+
+        return result;
+    }
+
+private:
+    Error error_;
+};
+
+TEST(TilePipeline, RejectsMalformedInferenceResults)
+{
+    const cv::Mat image(2, 2, CV_8UC3, cv::Scalar(0, 0, 0));
+    for (const auto error :
+         {InvalidResultInference::Error::TileCount, InvalidResultInference::Error::ImageCount,
+          InvalidResultInference::Error::Position, InvalidResultInference::Error::Type,
+          InvalidResultInference::Error::Dimensions})
+    {
+        InvalidResultInference worker(error);
+        TilePipeline pipeline(4, 2, 2, 1, {&worker});
+        EXPECT_THROW(pipeline.Run(image), std::runtime_error);
     }
 }
+
+TEST(TilePipeline, RejectsInvalidConfiguration)
+{
+    FakeInference worker(0.25f);
+    EXPECT_THROW(TilePipeline(0, 1, 2, 1, {&worker}), std::invalid_argument);
+    EXPECT_THROW(TilePipeline(4, 0, 2, 1, {&worker}), std::invalid_argument);
+    EXPECT_THROW(TilePipeline(4, 1, 0, 1, {&worker}), std::invalid_argument);
+    EXPECT_THROW(TilePipeline(4, 1, 2, -1, {&worker}), std::invalid_argument);
+    EXPECT_THROW(TilePipeline(4, 1, 2, 2, {&worker}), std::invalid_argument);
+}
+
+TEST(TilePipeline, RejectsUnexpectedInputFormat)
+{
+    FakeInference worker(0.25f);
+    TilePipeline pipeline(4, 1, 2, 1, {&worker});
+    EXPECT_THROW(pipeline.Run(cv::Mat(2, 2, CV_8UC1)), std::invalid_argument);
+    EXPECT_THROW(pipeline.Run(cv::Mat(2, 2, CV_8UC4)), std::invalid_argument);
+    EXPECT_THROW(pipeline.Run(cv::Mat(2, 2, CV_32FC3)), std::invalid_argument);
+}
+
+} // namespace
