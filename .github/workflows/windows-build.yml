@@ -33,7 +33,7 @@ jobs:
           set -euo pipefail
           mapfile -d '' files < <(git ls-files -z -- '*.cpp' '*.hpp' '*.h')
           clang-format --dry-run --Werror --style=file "${files[@]}"
-          cppcheck --enable=warning,performance,portability --std=c++17 --language=c++ --error-exitcode=1 --inline-suppr --suppress=missingIncludeSystem --suppress=missingInclude -Isrc main.cpp src tests
+          cppcheck --library=googletest --enable=warning,performance,portability --std=c++17 --language=c++ --error-exitcode=1 --inline-suppr --suppress=missingIncludeSystem --suppress=missingInclude -Isrc main.cpp src tests
   windows:
     needs: quality
     name: ${{ matrix.label }}
