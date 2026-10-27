@@ -186,6 +186,10 @@ jobs:
           $gtestDir = Join-Path $vcpkg 'installed/x64-windows/share/gtest'
           if (-not (Test-Path (Join-Path $gtestDir 'GTestConfig.cmake'))) { throw 'GTestConfig.cmake not found' }
           "GTEST_CMAKE_DIR=$gtestDir" >> $env:GITHUB_ENV
+          $gtestBin = Join-Path $vcpkg 'installed/x64-windows/bin'
+          if (-not (Test-Path (Join-Path $gtestBin 'gtest.dll'))) { throw 'GoogleTest runtime DLL not found' }
+          $gtestBin >> $env:GITHUB_PATH
+          $env:OPENCV_BIN >> $env:GITHUB_PATH
       - name: Configure
         run: |
           cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DOpenCV_ARCH=x64 -DOpenCV_RUNTIME="$env:OPENCV_RUNTIME" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT" -DGTest_DIR="$env:GTEST_CMAKE_DIR"
