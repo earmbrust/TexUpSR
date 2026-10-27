@@ -32,6 +32,17 @@
         "TensorRT_ROOT": "$env{TENSORRT_ROOT}",
         "CUDAToolkit_ROOT": "$env{CUDA_PATH}"
       }
+    },
+    {
+      "name": "windows-unit",
+      "displayName": "Windows - unit tests",
+      "inherits": "windows-analysis",
+      "binaryDir": "${sourceDir}/build-unit-ninja",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "OFF",
+        "TEXUPSR_BUILD_APP": "OFF",
+        "TEXUPSR_BUILD_GPU_TESTS": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -39,6 +50,19 @@
       "name": "windows-release",
       "configurePreset": "windows-vs2026",
       "configuration": "Release"
+    },
+    {
+      "name": "windows-unit",
+      "configurePreset": "windows-unit"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-unit",
+      "configurePreset": "windows-unit",
+      "output": {
+        "outputOnFailure": true
+      }
     }
   ]
 }
