@@ -127,7 +127,7 @@ BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
 
     for (size_t i = 0; i < tiles.size(); ++i)
     {
-        cv::Mat sr(outTile, outTile, CV_32FC3);
+
         const auto sample = [&](size_t index) -> float
         {
             const size_t offset = i * outPer + index;
@@ -138,18 +138,7 @@ BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
             return __half2float(static_cast<const __half*>(hostOutput_.Data())[offset]);
         };
 
-        for (int y = 0; y < outTile; ++y)
-        {
-            auto* row = sr.ptr<cv::Vec3f>(y);
-
-            for (int x = 0; x < outTile; ++x)
-            {
-                const size_t k = static_cast<size_t>(y) * outTile + x;
-                row[x] = cv::Vec3f(sample(2 * outPlane + k), sample(outPlane + k), sample(k));
-            }
-        }
-
-        result.images.push_back(std::move(sr));
+        result.images.push_back(tensorToImage(outTile, sample));
     }
 
     return result;
