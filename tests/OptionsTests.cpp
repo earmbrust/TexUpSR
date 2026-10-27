@@ -1,4 +1,5 @@
 // Copyright (c) 2025-2026 Elden Armbrust. MIT License.
+#include <gtest/gtest.h>
 #include "Options.hpp"
 #include <cmath>
 #include <iostream>
@@ -52,7 +53,7 @@ void rejectsValue(const std::string& option, const std::string& value)
     rejects(args, option + "=" + value);
 }
 
-void defaults()
+TEST(Options, defaults)
 {
     const auto opts = parseArgs(base());
     require(opts.input == "input.png" && opts.output == "out.png" && opts.model == "model.onnx",
@@ -64,7 +65,7 @@ void defaults()
     require(!opts.verbose && !opts.quiet && !opts.debug, "Boolean defaults");
 }
 
-void allOptions()
+TEST(Options, allOptions)
 {
     auto args = base();
     args.insert(args.end(),
@@ -84,7 +85,7 @@ void allOptions()
     require(a.verbose && a.quiet && a.debug, "Short flags");
 }
 
-void requiredArguments()
+TEST(Options, requiredArguments)
 {
     rejects({"trt_sr"}, "No arguments");
     rejects({"trt_sr", "-o", "b", "-m", "c"}, "Missing input");
@@ -104,7 +105,7 @@ void requiredArguments()
     }
 }
 
-void numericArguments()
+TEST(Options, numericArguments)
 {
     for (const auto& opt : {"--tile", "--batch", "--scale", "--streams", "--overlap"})
     {
@@ -132,21 +133,3 @@ void numericArguments()
             "Zero overlap and finite fractional workspace");
 }
 } // namespace
-
-int main()
-{
-    try
-    {
-        defaults();
-        allOptions();
-        requiredArguments();
-        numericArguments();
-        std::cout << "Options tests passed\n";
-        return 0;
-    }
-    catch (const std::exception& e)
-    {
-        std::cerr << "Options tests failed: " << e.what() << '\n';
-        return 1;
-    }
-}

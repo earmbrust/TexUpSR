@@ -33,7 +33,7 @@ jobs:
           set -euo pipefail
           mapfile -d '' files < <(git ls-files -z -- '*.cpp' '*.hpp' '*.h')
           clang-format --dry-run --Werror --style=file "${files[@]}"
-          cppcheck --enable=warning,performance,portability --std=c++17 --language=c++ --error-exitcode=1 --inline-suppr --suppress=missingIncludeSystem --suppress=missingInclude -Isrc main.cpp src tests
+          cppcheck --library=googletest --enable=warning,performance,portability --std=c++17 --language=c++ --error-exitcode=1 --inline-suppr --suppress=missingIncludeSystem --suppress=missingInclude -Isrc main.cpp src tests
   windows:
     needs: quality
     name: ${{ matrix.label }}
@@ -170,9 +170,29 @@ jobs:
             if (-not (Test-Path (Join-Path $root.FullName $file))) { throw "Missing TensorRT SDK file: $file" }
           }
           "TENSORRT_ROOT=$($root.FullName)" >> $env:GITHUB_ENV
+      - name: Install GoogleTest
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vcpkg = $env:VCPKG_INSTALLATION_ROOT
+          if (-not $vcpkg -or -not (Test-Path (Join-Path $vcpkg 'vcpkg.exe'))) {
+            $vcpkg = Join-Path $env:RUNNER_TEMP 'vcpkg'
+            git clone --depth 1 https://github.com/microsoft/vcpkg.git $vcpkg
+            if ($LASTEXITCODE -ne 0) { throw 'vcpkg clone failed' }
+            & (Join-Path $vcpkg 'bootstrap-vcpkg.bat') -disableMetrics
+            if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed' }
+          }
+          & (Join-Path $vcpkg 'vcpkg.exe') install gtest:x64-windows
+          if ($LASTEXITCODE -ne 0) { throw 'GoogleTest installation failed' }
+          $gtestDir = Join-Path $vcpkg 'installed/x64-windows/share/gtest'
+          if (-not (Test-Path (Join-Path $gtestDir 'GTestConfig.cmake'))) { throw 'GTestConfig.cmake not found' }
+          "GTEST_CMAKE_DIR=$gtestDir" >> $env:GITHUB_ENV
+          $gtestBin = Join-Path $vcpkg 'installed/x64-windows/bin'
+          if (-not (Test-Path (Join-Path $gtestBin 'gtest.dll'))) { throw 'GoogleTest runtime DLL not found' }
+          $gtestBin >> $env:GITHUB_PATH
+          $env:OPENCV_BIN >> $env:GITHUB_PATH
       - name: Configure
         run: |
-          cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DOpenCV_ARCH=x64 -DOpenCV_RUNTIME="$env:OPENCV_RUNTIME" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT"
+          cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DOpenCV_ARCH=x64 -DOpenCV_RUNTIME="$env:OPENCV_RUNTIME" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT" -DGTest_DIR="$env:GTEST_CMAKE_DIR"
           if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
       - name: Build Release
         run: |
