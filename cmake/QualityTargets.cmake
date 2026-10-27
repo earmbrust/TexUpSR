@@ -29,7 +29,16 @@ list(SORT _quality_compiled)
 # Catch newly created, unregistered translation units instead of silently skipping them.
 file(GLOB_RECURSE _all_cpp
   "${CMAKE_SOURCE_DIR}/src/*.cpp" "${CMAKE_SOURCE_DIR}/tests/*.cpp")
-list(APPEND _all_cpp "${CMAKE_SOURCE_DIR}/main.cpp")
+if(TEXUPSR_BUILD_APP)
+  list(APPEND _all_cpp "${CMAKE_SOURCE_DIR}/main.cpp")
+else()
+  list(REMOVE_ITEM _all_cpp
+    "${CMAKE_SOURCE_DIR}/src/Engine.cpp"
+    "${CMAKE_SOURCE_DIR}/src/Upscaler.cpp")
+endif()
+if(NOT TEXUPSR_BUILD_GPU_TESTS)
+  list(REMOVE_ITEM _all_cpp "${CMAKE_SOURCE_DIR}/tests/GpuInferenceTests.cpp")
+endif()
 foreach(_source IN LISTS _all_cpp)
   if(NOT _source IN_LIST _quality_compiled)
     message(FATAL_ERROR "C++ source has no CMake build target: ${_source}")
