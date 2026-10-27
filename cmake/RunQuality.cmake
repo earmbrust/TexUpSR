@@ -34,7 +34,7 @@ elseif(QUALITY_MODE STREQUAL "tidy")
 elseif(QUALITY_MODE STREQUAL "cppcheck")
   find_program(CPPCHECK_EXE NAMES cppcheck REQUIRED)
   message(STATUS "Cppcheck: checking source and tests")
-  run_checked("${CPPCHECK_EXE}" --enable=warning,performance,portability
+  run_checked("${CPPCHECK_EXE}" --library=googletest --enable=warning,performance,portability
     --std=c++17 --language=c++ --error-exitcode=1 --inline-suppr
     --suppress=missingIncludeSystem --suppress=missingInclude
     -Isrc main.cpp src tests)
