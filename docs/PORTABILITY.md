@@ -1,37 +1,32 @@
 # C++ standards and platform compatibility
 
-TexUpSR requires an NVIDIA CUDA/TensorRT-capable system. Supported build targets are Windows x64 and Linux x64; Linux ARM64 (SBSA/Jetson) is a planned target requiring device-specific validation. macOS is not supported.
+TexUpSR requires an NVIDIA CUDA/TensorRT-capable system. Windows x64 and Linux x64 are validated build targets. Linux ARM64 (SBSA/Jetson) is planned and requires SDK- and hardware-specific validation. macOS is not supported.
 
 ## C++ standard
 
-`-DTEXUP_CXX_STANDARD=AUTO` (default) selects the newest language mode reported by CMake for the current compiler. `17`, `20`, and `23` are explicit overrides. Selecting a language mode does **not** prove that the CUDA, TensorRT, OpenCV, and standard-library combination works; a successful build and tests provide that evidence. Always validate C++17 explicitly before describing it as supported.
+`-DTEXUP_CXX_STANDARD=AUTO` (default) selects the newest language mode advertised by the selected compiler. Explicit values `17`, `20`, and `23` are supported. C++17 remains the minimum language requirement; the application does not require C++20 or C++23 features.
+
+A compiler advertising a standard does not by itself establish compatibility with the installed CUDA, TensorRT, OpenCV, and C++ standard library. The complete build and test matrix validates those combinations used in CI.
 
 ## Configure
 
-On Linux with suitable system dependencies installed:
+On Linux with the required NVIDIA SDKs, OpenCV, and GoogleTest installed:
 
 ```sh
 cmake --preset linux-release -DTEXUP_CXX_STANDARD=17
 cmake --build --preset linux-release
-ctest --test-dir build-linux -C Release --output-on-failure
+ctest --test-dir build-linux --output-on-failure
 ```
 
-Optional `-DTensorRT_ROOT=/path/to/sdk` can point at a non-system SDK. Otherwise CMake searches normal system locations, including multiarch include/library paths. On Windows, continue to use the existing local preset with installed SDK paths and set `-DTEXUP_CXX_STANDARD=20` or `23` as desired.
+`-DTensorRT_ROOT=/path/to/sdk` can be used with a custom TensorRT installation. Otherwise CMake searches system paths, including multiarch directories. On Windows, use the Visual Studio preset and select the standard with `-DTEXUP_CXX_STANDARD=17`, `20`, or `23`.
 
-The GPU test reports a skip (return code 77) on hosts without a usable GPU. A skipped GPU test is **not** evidence that inference works on that host. NVIDIA TensorRT engines need to be built for compatible target environments.
+## CI verification
 
-## CI
+The main CI workflow has three sequential pre-build gates: Cppcheck, clang-tidy with an SDK-backed compilation database, and an SDK-independent CMake configuration check. Once those pass, all 12 platform configurations can run independently:
 
-The existing Windows workflow provides an x64 build baseline. The CI entrypoint runs the existing Windows workflow and a Linux x86-64
-compatibility matrix. The Linux jobs use NVIDIA's public
-`nvcr.io/nvidia/tensorrt:26.05-py3` development container (CUDA 13.2,
-TensorRT 10.16.1), with GCC and Clang-18. Each job configures, builds, and
-runs the **six CPU-only CTest tests** separately in C++17, C++20, and C++23.
-The test named `gpu_inference` is explicitly excluded on hosted CPU runners;
-these jobs do not establish working GPU inference on Linux. The container
-must be downloadable on hosted CI for these jobs to work. No Linux CI
-success has been demonstrated until Actions completes a run.
+- Windows x64: Visual Studio 2022 and Visual Studio 2026, each with C++17, C++20, and C++23.
+- Linux x64: GCC and Clang, each with C++17, C++20, and C++23, using the NVIDIA TensorRT development image.
 
-Linux ARM64, Jetson, Windows Clang, and GPU-backed Linux inference require
-separate hardware / SDK validation. The Linux workflow is an initial x64
-compatibility gate, not a claim that every NVIDIA platform is supported.
+Each platform job configures and builds the actual application, runs its configured CTest suite, and checks the application command-line entry point. The build jobs do not package or publish a release. GitHub Actions run 40628257485 completed successfully for all 15 jobs, including the three pre-build gates and 12 platform configurations.
+
+Successful CI builds and command-line smoke tests do not establish working GPU inference. Hardware-backed inference validation requires a compatible NVIDIA GPU and driver. Linux ARM64, Jetson, Windows Clang, and GPU-backed Linux inference remain outside the current CI compatibility matrix.
