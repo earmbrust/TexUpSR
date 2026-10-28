@@ -15,5 +15,347 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-smoke-test:
-    uses: ./.github/workflows/windows-build.yml
+  cppcheck:
+    name: Pre-build / Cppcheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Cppcheck
+        run: |
+          if ! command -v cppcheck >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y cppcheck
+          fi
+      - name: Analyze source and tests
+        run: |
+          cppcheck --library=googletest --enable=warning,performance,portability --std=c++17 --language=c++ --error-exitcode=1 --inline-suppr --suppress=missingIncludeSystem --suppress=missingInclude -Isrc main.cpp src tests
+
+  clang-tidy:
+    name: Pre-build / Clang-tidy
+    needs: cppcheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    container:
+      image: nvcr.io/nvidia/tensorrt:26.05-py3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install missing analysis dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for pkg in build-essential cmake ninja-build libopencv-dev libgtest-dev clang-18 clang-tidy-18; do
+            dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -qx 'install ok installed' || missing+=("$pkg")
+          done
+          if ((${#missing[@]})); then
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing[@]}"
+          fi
+      - name: Generate compilation database
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-tidy -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DTEXUP_CXX_STANDARD=17 \
+            -DBUILD_TESTING=ON
+          test -s build-tidy/compile_commands.json
+      - name: Run clang-tidy on project sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYCODE'
+          import json
+          import os
+          import subprocess
+          with open('build-tidy/compile_commands.json', encoding='utf-8') as stream:
+              entries = json.load(stream)
+          paths = sorted({os.path.realpath(entry['file']) for entry in entries})
+          if not paths:
+              raise SystemExit('No translation units found')
+          for path in paths:
+              subprocess.run(['clang-tidy-18', '--quiet', '--warnings-as-errors=*', '-p', 'build-tidy', path], check=True)
+          PYCODE
+
+  cmake-check:
+    name: Pre-build / CMake configuration
+    needs: clang-tidy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install missing configuration dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for pkg in cmake ninja-build libopencv-dev libgtest-dev; do
+            dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -qx 'install ok installed' || missing+=("$pkg")
+          done
+          if ((${#missing[@]})); then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends "${missing[@]}"
+          fi
+      - name: Configure SDK-independent tests
+        run: |
+          cmake -S . -B build-check -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTEXUPSR_BUILD_APP=OFF \
+            -DTEXUPSR_BUILD_GPU_TESTS=OFF \
+            -DTEXUP_CXX_STANDARD=17 \
+            -DBUILD_TESTING=ON
+
+  linux:
+    name: Linux / ${{ matrix.compiler }} / C++${{ matrix.standard }}
+    needs: cmake-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        standard: ['17', '20', '23']
+    container:
+      image: nvcr.io/nvidia/tensorrt:26.05-py3
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install compiler, OpenCV, and GoogleTest
+        run: |
+          set -euo pipefail
+          missing=()
+          for pkg in build-essential clang-18 cmake ninja-build libopencv-dev libgtest-dev; do
+            dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -qx 'install ok installed' || missing+=("$pkg")
+          done
+          if ((${#missing[@]})); then
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing[@]}"
+          fi
+      - name: Configure and build application
+        env:
+          COMPILER: ${{ matrix.compiler }}
+          STANDARD: ${{ matrix.standard }}
+        run: |
+          set -euo pipefail
+          if [[ "$COMPILER" == clang ]]; then
+            export CC=clang-18 CXX=clang++-18
+          else
+            export CC=gcc CXX=g++
+          fi
+          cmake -S . -B build-ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER="$CXX" \
+            -DTEXUP_CXX_STANDARD="$STANDARD" \
+            -DBUILD_TESTING=ON
+          cmake --build build-ci --parallel 2
+          test -x build-ci/trt_sr
+      - name: Run unit tests
+        run: ctest --test-dir build-ci --output-on-failure
+      - name: Verify application binary
+        run: |
+          ./build-ci/trt_sr --help
+  windows:
+    needs: cmake-check
+    name: Windows / ${{ matrix.label }} / C++${{ matrix.standard }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows 2022 / Visual Studio 2022
+            runner: windows-2022
+            generator: Visual Studio 17 2022
+            artifact: TexUpSR-windows-x64
+            standard: '17'
+          - label: Windows 2022 / Visual Studio 2022
+            runner: windows-2022
+            generator: Visual Studio 17 2022
+            artifact: TexUpSR-windows-x64
+            standard: '20'
+          - label: Windows 2022 / Visual Studio 2022
+            runner: windows-2022
+            generator: Visual Studio 17 2022
+            artifact: TexUpSR-windows-x64
+            standard: '23'
+          - label: Windows 2025 / Visual Studio 2026
+            runner: windows-2025-vs2026
+            generator: Visual Studio 18 2026
+            artifact: TexUpSR-windows-x64-vs2026
+            standard: '17'
+          - label: Windows 2025 / Visual Studio 2026
+            runner: windows-2025-vs2026
+            generator: Visual Studio 18 2026
+            artifact: TexUpSR-windows-x64-vs2026
+            standard: '20'
+          - label: Windows 2025 / Visual Studio 2026
+            runner: windows-2025-vs2026
+            generator: Visual Studio 18 2026
+            artifact: TexUpSR-windows-x64-vs2026
+            standard: '23'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore or save CUDA 13.2 toolkit cache
+        id: cuda-cache
+        uses: actions/cache@v4
+        with:
+          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2
+          key: cuda-13.2.0-${{ matrix.runner }}-x64-nvcc-crt-cudart-v1
+      - name: Report CUDA cache status
+        run: |
+          if ('${{ steps.cuda-cache.outputs.cache-hit }}' -eq 'true') {
+            Write-Host 'CUDA 13.2 cache HIT: reusing installed toolkit; installer will be skipped.'
+          } else {
+            Write-Host 'CUDA 13.2 cache MISS: installing toolkit; cache will be saved after a successful job.'
+          }
+      - name: Install CUDA 13.2
+        if: steps.cuda-cache.outputs.cache-hit != 'true'
+        uses: Jimver/cuda-toolkit@v0.2.36
+        with:
+          cuda: '13.2.0'
+          method: network
+          sub-packages: '["nvcc","crt","cudart","visual_studio_integration"]'
+      - name: Configure restored CUDA environment
+        if: steps.cuda-cache.outputs.cache-hit == 'true'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cuda = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2'
+          if (-not (Test-Path (Join-Path $cuda 'bin/nvcc.exe'))) { throw 'Cached CUDA compiler is missing' }
+          "CUDA_PATH=$cuda" >> $env:GITHUB_ENV
+          "$cuda\bin" >> $env:GITHUB_PATH
+          "$cuda\bin\x64" >> $env:GITHUB_PATH
+      - name: Validate CUDA toolkit headers
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:CUDA_PATH) { throw 'CUDA_PATH was not set by CUDA installer' }
+          foreach ($file in @('include/cuda_runtime_api.h', 'include/crt/host_defines.h', 'lib/x64/cudart.lib', 'bin/nvcc.exe')) {
+            if (-not (Test-Path (Join-Path $env:CUDA_PATH $file))) { throw "CUDA SDK missing required file: $file" }
+          }
+          $runtimeDirs = @('bin/x64', 'bin')
+          $runtime = $runtimeDirs | ForEach-Object {
+            $dir = Join-Path $env:CUDA_PATH $_
+            if (Test-Path $dir) { Get-ChildItem $dir -Filter 'cudart64_*.dll' -File }
+          } | Select-Object -First 1
+          if (-not $runtime) { throw 'CUDA runtime DLL missing from bin/x64 and bin' }
+          Write-Host "CUDA runtime found: $($runtime.FullName)"
+          "CUDART_DLL=$($runtime.FullName)" >> $env:GITHUB_ENV
+          "$($runtime.DirectoryName)" >> $env:GITHUB_PATH
+
+      # Separate versioned caches keep the SDKs independently reusable.
+      # On a cache miss, actions/cache saves the extracted files in its post-job step.
+      - name: Restore OpenCV SDK cache
+        id: opencv-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/opencv-sdk
+          key: windows-2025-x64-opencv-4.12.0-official-sdk-v1
+      - name: Download official OpenCV 4.12.0 Windows binaries
+        if: steps.opencv-cache.outputs.cache-hit != 'true'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/opencv/opencv/releases/download/4.12.0/opencv-4.12.0-windows.exe'
+          $archive = Join-Path $env:RUNNER_TEMP 'opencv-4.12.0-windows.exe'
+          $dest = Join-Path $env:RUNNER_TEMP 'opencv-sdk'
+          Invoke-WebRequest -Uri $url -OutFile $archive -MaximumRetryCount 3
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $sevenZip = (Get-Command '7z.exe' -ErrorAction SilentlyContinue).Source
+          if (-not $sevenZip) { $sevenZip = 'C:\Program Files\7-Zip\7z.exe' }
+          if (-not (Test-Path $sevenZip)) { throw '7-Zip executable not found on runner' }
+          & $sevenZip x '-y' "-o$dest" $archive
+          if ($LASTEXITCODE -ne 0) { throw 'OpenCV extraction failed' }
+      - name: Validate OpenCV SDK and configure paths
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dest = Join-Path $env:RUNNER_TEMP 'opencv-sdk'
+          $root = Get-ChildItem $dest -Directory -Recurse | Where-Object { Test-Path (Join-Path $_.FullName 'build/OpenCVConfig.cmake') } | Select-Object -First 1
+          if (-not $root) { throw 'OpenCV build/OpenCVConfig.cmake not found in extracted SDK' }
+          $opencvBuild = Join-Path $root.FullName 'build'
+          $sdk = @('vc17', 'vc16') | ForEach-Object {
+            $candidate = Join-Path $opencvBuild "x64/$_"
+            $candidateBin = Join-Path $candidate 'bin'
+            $candidateLib = Join-Path $candidate 'lib'
+            if ((Test-Path $candidateBin) -and (Test-Path $candidateLib) -and
+                (Get-ChildItem $candidateBin -Filter 'opencv_world*.dll' -File) -and
+                (Get-ChildItem $candidateLib -Filter 'opencv_world*.lib' -File)) {
+              [pscustomobject]@{ Name = $_; Bin = $candidateBin; Lib = $candidateLib }
+            }
+          } | Select-Object -First 1
+          if (-not $sdk) { throw 'OpenCV Windows x64 SDK not found (expected vc16 or vc17 with opencv_world DLL and import library)' }
+          Write-Host "Using OpenCV SDK: $($sdk.Name)"
+          "OPENCV_BUILD=$opencvBuild" >> $env:GITHUB_ENV
+          "OPENCV_BIN=$($sdk.Bin)" >> $env:GITHUB_ENV
+          "OPENCV_RUNTIME=$($sdk.Name)" >> $env:GITHUB_ENV
+      - name: Restore TensorRT SDK cache
+        id: tensorrt-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/tensorrt
+          key: windows-2025-x64-tensorrt-10.16.1.11-cuda-13.2-sdk-v1
+      - name: Download TensorRT 10.16.1 for CUDA 13.2
+        if: steps.tensorrt-cache.outputs.cache-hit != 'true'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.16.1/zip/TensorRT-10.16.1.11.Windows.amd64.cuda-13.2.zip'
+          $zip = Join-Path $env:RUNNER_TEMP 'tensorrt.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -MaximumRetryCount 3
+          Expand-Archive -LiteralPath $zip -DestinationPath "$env:RUNNER_TEMP/tensorrt" -Force
+      - name: Validate TensorRT SDK and configure path
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dest = Join-Path $env:RUNNER_TEMP 'tensorrt'
+          $root = Get-ChildItem $dest -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'include/NvInfer.h') } | Select-Object -First 1
+          if (-not $root) { throw 'TensorRT SDK folder not found in extracted SDK' }
+          foreach ($file in @('lib/nvinfer_10.lib','lib/nvonnxparser_10.lib','bin/nvinfer_10.dll','bin/nvonnxparser_10.dll')) {
+            if (-not (Test-Path (Join-Path $root.FullName $file))) { throw "Missing TensorRT SDK file: $file" }
+          }
+          "TENSORRT_ROOT=$($root.FullName)" >> $env:GITHUB_ENV
+      - name: Install GoogleTest
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vcpkg = $env:VCPKG_INSTALLATION_ROOT
+          if (-not $vcpkg -or -not (Test-Path (Join-Path $vcpkg 'vcpkg.exe'))) {
+            $vcpkg = Join-Path $env:RUNNER_TEMP 'vcpkg'
+            git clone --depth 1 https://github.com/microsoft/vcpkg.git $vcpkg
+            if ($LASTEXITCODE -ne 0) { throw 'vcpkg clone failed' }
+            & (Join-Path $vcpkg 'bootstrap-vcpkg.bat') -disableMetrics
+            if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed' }
+          }
+          & (Join-Path $vcpkg 'vcpkg.exe') install gtest:x64-windows
+          if ($LASTEXITCODE -ne 0) { throw 'GoogleTest installation failed' }
+          $gtestDir = Join-Path $vcpkg 'installed/x64-windows/share/gtest'
+          if (-not (Test-Path (Join-Path $gtestDir 'GTestConfig.cmake'))) { throw 'GTestConfig.cmake not found' }
+          "GTEST_CMAKE_DIR=$gtestDir" >> $env:GITHUB_ENV
+          $gtestBin = Join-Path $vcpkg 'installed/x64-windows/bin'
+          if (-not (Test-Path (Join-Path $gtestBin 'gtest.dll'))) { throw 'GoogleTest runtime DLL not found' }
+          $gtestBin >> $env:GITHUB_PATH
+          $env:OPENCV_BIN >> $env:GITHUB_PATH
+      - name: Configure
+        run: |
+          cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DOpenCV_ARCH=x64 -DOpenCV_RUNTIME="$env:OPENCV_RUNTIME" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT" -DGTest_DIR="$env:GTEST_CMAKE_DIR" -DTEXUP_CXX_STANDARD=${{ matrix.standard }}
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
+      - name: Build Release
+        run: |
+          cmake --build build-ci --config Release --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
+      - name: Run CPU option tests
+        run: |
+          ctest --test-dir build-ci -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'CPU option tests failed' }
+      - name: Verify CLI without GPU
+        run: |
+          $exe = './build-ci/Release/trt_sr.exe'
+          $env:PATH = "$env:OPENCV_BIN;$env:PATH"
+          & $exe --help | Out-String | Write-Output
+          if ($LASTEXITCODE -ne 0) { throw 'CLI --help failed' }
+          $PSNativeCommandUseErrorActionPreference = $false
+          & $exe --not-a-valid-option 2>&1 | Out-String | Write-Output
+          if ($LASTEXITCODE -eq 0) { throw 'Invalid option was unexpectedly accepted' }
+          $global:LASTEXITCODE = 0
