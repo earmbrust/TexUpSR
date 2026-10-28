@@ -34,9 +34,31 @@ jobs:
           mapfile -d '' files < <(git ls-files -z -- '*.cpp' '*.hpp' '*.h')
           clang-format --dry-run --Werror --style=file "${files[@]}"
           cppcheck --library=googletest --enable=warning,performance,portability --std=c++17 --language=c++ --error-exitcode=1 --inline-suppr --suppress=missingIncludeSystem --suppress=missingInclude -Isrc main.cpp src tests
-  windows:
+  linux-unit:
+    name: Linux CPU / C++${{ matrix.standard }}
     needs: quality
-    name: ${{ matrix.label }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        standard: ['17', '20', '23']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install CPU test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libopencv-dev libgtest-dev
+      - name: Configure SDK-independent tests
+        run: cmake -S . -B build-linux-unit -G Ninja -DCMAKE_BUILD_TYPE=Release -DTEXUPSR_BUILD_APP=OFF -DTEXUPSR_BUILD_GPU_TESTS=OFF -DTEXUP_CXX_STANDARD=${{ matrix.standard }}
+      - name: Build
+        run: cmake --build build-linux-unit --parallel 4
+      - name: Test
+        run: ctest --test-dir build-linux-unit --output-on-failure
+
+  windows:
+    needs: [quality, linux-unit]
+    name: ${{ matrix.label }} / C++${{ matrix.standard }}
     strategy:
       fail-fast: false
       matrix:
@@ -45,10 +67,32 @@ jobs:
             runner: windows-2022
             generator: Visual Studio 17 2022
             artifact: TexUpSR-windows-x64
+            standard: '17'
+          - label: Windows 2022 / Visual Studio 2022
+            runner: windows-2022
+            generator: Visual Studio 17 2022
+            artifact: TexUpSR-windows-x64
+            standard: '20'
+          - label: Windows 2022 / Visual Studio 2022
+            runner: windows-2022
+            generator: Visual Studio 17 2022
+            artifact: TexUpSR-windows-x64
+            standard: '23'
           - label: Windows 2025 / Visual Studio 2026
             runner: windows-2025-vs2026
             generator: Visual Studio 18 2026
             artifact: TexUpSR-windows-x64-vs2026
+            standard: '17'
+          - label: Windows 2025 / Visual Studio 2026
+            runner: windows-2025-vs2026
+            generator: Visual Studio 18 2026
+            artifact: TexUpSR-windows-x64-vs2026
+            standard: '20'
+          - label: Windows 2025 / Visual Studio 2026
+            runner: windows-2025-vs2026
+            generator: Visual Studio 18 2026
+            artifact: TexUpSR-windows-x64-vs2026
+            standard: '23'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     defaults:
@@ -192,7 +236,7 @@ jobs:
           $env:OPENCV_BIN >> $env:GITHUB_PATH
       - name: Configure
         run: |
-          cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DOpenCV_ARCH=x64 -DOpenCV_RUNTIME="$env:OPENCV_RUNTIME" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT" -DGTest_DIR="$env:GTEST_CMAKE_DIR"
+          cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DOpenCV_ARCH=x64 -DOpenCV_RUNTIME="$env:OPENCV_RUNTIME" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT" -DGTest_DIR="$env:GTEST_CMAKE_DIR" -DTEXUP_CXX_STANDARD=${{ matrix.standard }}
           if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
       - name: Build Release
         run: |
@@ -213,6 +257,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) { throw 'Invalid option was unexpectedly accepted' }
           $global:LASTEXITCODE = 0
       - name: Package Windows build
+        if: matrix.standard == '23'
         run: |
           $out = 'dist/TexUpSR-windows-x64'
           New-Item -ItemType Directory -Force $out | Out-Null
@@ -226,6 +271,7 @@ jobs:
           Copy-Item $env:CUDART_DLL $out
           Compress-Archive -Path "$out/*" -DestinationPath 'dist/${{ matrix.artifact }}.zip' -Force
       - name: Upload Windows build
+        if: matrix.standard == '23'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}

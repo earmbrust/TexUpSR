@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(trt_sr_upscaler VERSION 0.1.0 LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+include(cmake/CppStandards.cmake)
 
 option(TEXUPSR_BUILD_APP "Build the TensorRT upscaler" ON)
 option(TEXUPSR_BUILD_GPU_TESTS "Build the separate GPU integration test" OFF)
@@ -13,15 +12,17 @@ endif()
 find_package(OpenCV REQUIRED)
 
 if(TEXUPSR_BUILD_APP)
-  set(TensorRT_ROOT "$ENV{TENSORRT_ROOT}" CACHE PATH "TensorRT installation directory")
-  if(NOT TensorRT_ROOT)
-    message(FATAL_ERROR "Set TensorRT_ROOT to the TensorRT SDK directory")
-  endif()
+  set(TensorRT_ROOT "$ENV{TENSORRT_ROOT}" CACHE PATH "Optional TensorRT SDK root (empty for system search)")
   find_package(CUDAToolkit REQUIRED)
-  find_path(TENSORRT_INCLUDE NvInfer.h PATHS "${TensorRT_ROOT}/include" REQUIRED NO_DEFAULT_PATH)
-  find_library(TENSORRT_INFER NAMES nvinfer_10 nvinfer PATHS "${TensorRT_ROOT}/lib" REQUIRED NO_DEFAULT_PATH)
-  find_library(TENSORRT_PARSER NAMES nvonnxparser_10 nvonnxparser PATHS "${TensorRT_ROOT}/lib" REQUIRED NO_DEFAULT_PATH)
-
+  find_path(TENSORRT_INCLUDE NAMES NvInfer.h
+    HINTS "${TensorRT_ROOT}/include" "${TensorRT_ROOT}/include/x86_64-linux-gnu" "${TensorRT_ROOT}/include/aarch64-linux-gnu"
+    REQUIRED)
+  find_library(TENSORRT_INFER NAMES nvinfer_10 nvinfer
+    HINTS "${TensorRT_ROOT}/lib" "${TensorRT_ROOT}/lib64" "${TensorRT_ROOT}/lib/x86_64-linux-gnu" "${TensorRT_ROOT}/lib/aarch64-linux-gnu"
+    REQUIRED)
+  find_library(TENSORRT_PARSER NAMES nvonnxparser_10 nvonnxparser
+    HINTS "${TensorRT_ROOT}/lib" "${TensorRT_ROOT}/lib64" "${TensorRT_ROOT}/lib/x86_64-linux-gnu" "${TensorRT_ROOT}/lib/aarch64-linux-gnu"
+    REQUIRED)
   add_executable(trt_sr
     main.cpp
     src/Options.cpp
@@ -68,39 +69,39 @@ if(BUILD_TESTING)
   add_executable(options_tests tests/OptionsTests.cpp src/Options.cpp)
   target_include_directories(options_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_link_libraries(options_tests PRIVATE GTest::gtest_main)
-  gtest_discover_tests(options_tests)
+  gtest_discover_tests(options_tests DISCOVERY_TIMEOUT 30)
   add_executable(image_tiles_tests tests/ImageTilesTests.cpp src/ImageTiles.cpp)
   target_include_directories(image_tiles_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_include_directories(image_tiles_tests PRIVATE ${OpenCV_INCLUDE_DIRS})
   target_link_libraries(image_tiles_tests PRIVATE ${OpenCV_LIBS})
   target_link_libraries(image_tiles_tests PRIVATE GTest::gtest_main)
-  gtest_discover_tests(image_tiles_tests)
+  gtest_discover_tests(image_tiles_tests DISCOVERY_TIMEOUT 30)
   add_executable(tile_pipeline_tests tests/TilePipelineTests.cpp src/TilePipeline.cpp src/ImageTiles.cpp)
   target_include_directories(tile_pipeline_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" ${OpenCV_INCLUDE_DIRS})
   target_link_libraries(tile_pipeline_tests PRIVATE ${OpenCV_LIBS})
   target_link_libraries(tile_pipeline_tests PRIVATE GTest::gtest_main)
-  gtest_discover_tests(tile_pipeline_tests)
+  gtest_discover_tests(tile_pipeline_tests DISCOVERY_TIMEOUT 30)
   add_executable(tile_pipeline_progress_tests tests/TilePipelineProgressTests.cpp src/TilePipeline.cpp src/ImageTiles.cpp)
   target_include_directories(tile_pipeline_progress_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" ${OpenCV_INCLUDE_DIRS})
   target_link_libraries(tile_pipeline_progress_tests PRIVATE ${OpenCV_LIBS})
   target_link_libraries(tile_pipeline_progress_tests PRIVATE GTest::gtest_main)
-  gtest_discover_tests(tile_pipeline_progress_tests)
+  gtest_discover_tests(tile_pipeline_progress_tests DISCOVERY_TIMEOUT 30)
 
   add_executable(sizing_tests tests/SizingTests.cpp src/Sizing.cpp)
   target_include_directories(sizing_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(sizing_tests PRIVATE GTest::gtest_main)
-  gtest_discover_tests(sizing_tests)
+  gtest_discover_tests(sizing_tests DISCOVERY_TIMEOUT 30)
 
   add_executable(tensor_sizes_tests tests/TensorSizesTests.cpp src/TensorSizes.cpp)
   target_include_directories(tensor_sizes_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_link_libraries(tensor_sizes_tests PRIVATE GTest::gtest_main)
-  gtest_discover_tests(tensor_sizes_tests)
+  gtest_discover_tests(tensor_sizes_tests DISCOVERY_TIMEOUT 30)
 
   if(TEXUPSR_BUILD_APP)
   add_executable(cuda_half_tests tests/CudaHalfTests.cpp)
   target_include_directories(cuda_half_tests PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
   target_link_libraries(cuda_half_tests PRIVATE GTest::gtest_main)
-  gtest_discover_tests(cuda_half_tests)
+  gtest_discover_tests(cuda_half_tests DISCOVERY_TIMEOUT 30)
   endif()
 endif()
 
