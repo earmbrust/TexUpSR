@@ -40,7 +40,7 @@ jobs:
           set -euo pipefail
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            build-essential clang-18 cmake ninja-build libopencv-dev
+            build-essential clang-18 cmake ninja-build libopencv-dev libgtest-dev
       - name: Build and test C++17, C++20, and C++23
         env:
           COMPILER: ${{ matrix.compiler }}
