@@ -22,14 +22,95 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Cppcheck
-        run: sudo apt-get update && sudo apt-get install -y cppcheck
+        run: |
+          if ! command -v cppcheck >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y cppcheck
+          fi
       - name: Analyze source and tests
         run: |
           cppcheck --library=googletest --enable=warning,performance,portability --std=c++17 --language=c++ --error-exitcode=1 --inline-suppr --suppress=missingIncludeSystem --suppress=missingInclude -Isrc main.cpp src tests
 
+  clang-tidy:
+    name: Pre-build / Clang-tidy
+    needs: cppcheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    container:
+      image: nvcr.io/nvidia/tensorrt:26.05-py3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install missing analysis dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for pkg in build-essential cmake ninja-build libopencv-dev libgtest-dev clang-18 clang-tidy-18; do
+            dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -qx 'install ok installed' || missing+=("$pkg")
+          done
+          if ((${#missing[@]})); then
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing[@]}"
+          fi
+      - name: Generate compilation database
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-tidy -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DTEXUP_CXX_STANDARD=17 \
+            -DBUILD_TESTING=ON
+          test -s build-tidy/compile_commands.json
+      - name: Run clang-tidy on project sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYCODE'
+          import json
+          import os
+          import subprocess
+          with open('build-tidy/compile_commands.json', encoding='utf-8') as stream:
+              entries = json.load(stream)
+          paths = sorted({os.path.realpath(entry['file']) for entry in entries})
+          if not paths:
+              raise SystemExit('No translation units found')
+          for path in paths:
+              subprocess.run(['clang-tidy-18', '--quiet', '--warnings-as-errors=*', '-p', 'build-tidy', path], check=True)
+          PYCODE
+
+  cmake-check:
+    name: Pre-build / CMake configuration
+    needs: clang-tidy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install missing configuration dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for pkg in cmake ninja-build libopencv-dev libgtest-dev; do
+            dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -qx 'install ok installed' || missing+=("$pkg")
+          done
+          if ((${#missing[@]})); then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends "${missing[@]}"
+          fi
+      - name: Configure SDK-independent tests
+        run: |
+          cmake -S . -B build-check -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTEXUPSR_BUILD_APP=OFF \
+            -DTEXUPSR_BUILD_GPU_TESTS=OFF \
+            -DTEXUP_CXX_STANDARD=17 \
+            -DBUILD_TESTING=ON
+
   linux:
     name: Linux / ${{ matrix.compiler }} / C++${{ matrix.standard }}
-    needs: cppcheck
+    needs: cmake-check
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -47,9 +128,14 @@ jobs:
       - name: Install compiler, OpenCV, and GoogleTest
         run: |
           set -euo pipefail
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            build-essential clang-18 cmake ninja-build libopencv-dev libgtest-dev
+          missing=()
+          for pkg in build-essential clang-18 cmake ninja-build libopencv-dev libgtest-dev; do
+            dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -qx 'install ok installed' || missing+=("$pkg")
+          done
+          if ((${#missing[@]})); then
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing[@]}"
+          fi
       - name: Configure and build application
         env:
           COMPILER: ${{ matrix.compiler }}
@@ -74,7 +160,7 @@ jobs:
         run: |
           ./build-ci/trt_sr --help
   windows:
-    needs: cppcheck
+    needs: cmake-check
     name: Windows / ${{ matrix.label }} / C++${{ matrix.standard }}
     strategy:
       fail-fast: false
