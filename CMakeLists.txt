@@ -51,6 +51,10 @@ if(TEXUPSR_BUILD_APP)
   protobuf_generate(TARGET model_inspection LANGUAGE cpp APPEND_PATH
     PROTOS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/onnx/onnx.proto"
     PROTOC_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/onnx-generated")
+  add_custom_target(onnx_generated
+    DEPENDS
+      "${CMAKE_CURRENT_BINARY_DIR}/onnx-generated/onnx.pb.h"
+      "${CMAKE_CURRENT_BINARY_DIR}/onnx-generated/onnx.pb.cc")
 
   set(TensorRT_ROOT "$ENV{TENSORRT_ROOT}" CACHE PATH "Optional TensorRT SDK root (empty for system search)")
   find_package(CUDAToolkit REQUIRED)
