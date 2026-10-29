@@ -45,7 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          for pkg in build-essential cmake ninja-build libopencv-dev libgtest-dev clang-18 clang-tidy-18; do
+          for pkg in build-essential cmake ninja-build libopencv-dev libgtest-dev libprotobuf-dev protobuf-compiler clang-18 clang-tidy-18; do
             dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -qx 'install ok installed' || missing+=("$pkg")
           done
           if ((${#missing[@]})); then
@@ -73,7 +73,7 @@ jobs:
           import subprocess
           with open('build-tidy/compile_commands.json', encoding='utf-8') as stream:
               entries = json.load(stream)
-          paths = sorted({os.path.realpath(entry['file']) for entry in entries})
+          paths = sorted({os.path.realpath(entry['file']) for entry in entries if not entry['file'].endswith('onnx.pb.cc')})
           if not paths:
               raise SystemExit('No translation units found')
           for path in paths:
@@ -129,7 +129,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          for pkg in build-essential clang-18 cmake ninja-build libopencv-dev libgtest-dev; do
+          for pkg in build-essential clang-18 cmake ninja-build libopencv-dev libgtest-dev libprotobuf-dev protobuf-compiler; do
             dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -qx 'install ok installed' || missing+=("$pkg")
           done
           if ((${#missing[@]})); then
@@ -317,7 +317,7 @@ jobs:
             if (-not (Test-Path (Join-Path $root.FullName $file))) { throw "Missing TensorRT SDK file: $file" }
           }
           "TENSORRT_ROOT=$($root.FullName)" >> $env:GITHUB_ENV
-      - name: Install GoogleTest
+      - name: Install GoogleTest and Protobuf
         run: |
           $ErrorActionPreference = 'Stop'
           $vcpkg = $env:VCPKG_INSTALLATION_ROOT
@@ -328,18 +328,23 @@ jobs:
             & (Join-Path $vcpkg 'bootstrap-vcpkg.bat') -disableMetrics
             if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed' }
           }
-          & (Join-Path $vcpkg 'vcpkg.exe') install gtest:x64-windows
+          & (Join-Path $vcpkg 'vcpkg.exe') install gtest:x64-windows protobuf:x64-windows
           if ($LASTEXITCODE -ne 0) { throw 'GoogleTest installation failed' }
           $gtestDir = Join-Path $vcpkg 'installed/x64-windows/share/gtest'
           if (-not (Test-Path (Join-Path $gtestDir 'GTestConfig.cmake'))) { throw 'GTestConfig.cmake not found' }
           "GTEST_CMAKE_DIR=$gtestDir" >> $env:GITHUB_ENV
+          $protobufDir = Join-Path $vcpkg 'installed/x64-windows/share/protobuf'
+          if (-not (Test-Path (Join-Path $protobufDir 'protobuf-config.cmake'))) { throw 'Protobuf config not found' }
+          "Protobuf_DIR=$protobufDir" >> $env:GITHUB_ENV
+          "VCPKG_TOOLCHAIN=$(Join-Path $vcpkg 'scripts/buildsystems/vcpkg.cmake')" >> $env:GITHUB_ENV
+          (Join-Path $vcpkg 'installed/x64-windows/bin') >> $env:GITHUB_PATH
           $gtestBin = Join-Path $vcpkg 'installed/x64-windows/bin'
           if (-not (Test-Path (Join-Path $gtestBin 'gtest.dll'))) { throw 'GoogleTest runtime DLL not found' }
           $gtestBin >> $env:GITHUB_PATH
           $env:OPENCV_BIN >> $env:GITHUB_PATH
       - name: Configure
         run: |
-          cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DOpenCV_ARCH=x64 -DOpenCV_RUNTIME="$env:OPENCV_RUNTIME" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT" -DGTest_DIR="$env:GTEST_CMAKE_DIR" -DTEXUP_CXX_STANDARD=${{ matrix.standard }}
+          cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DOpenCV_ARCH=x64 -DOpenCV_RUNTIME="$env:OPENCV_RUNTIME" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT" -DGTest_DIR="$env:GTEST_CMAKE_DIR" -DProtobuf_DIR="$env:Protobuf_DIR" -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_TOOLCHAIN" -DTEXUP_CXX_STANDARD=${{ matrix.standard }}
           if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
       - name: Build Release
         run: |
