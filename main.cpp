@@ -1,5 +1,6 @@
 // Copyright (c) 2025-2026 Elden Armbrust. MIT License.
 #include "Engine.hpp"
+#include "ModelInspection.hpp"
 #include "Options.hpp"
 #include "Sizing.hpp"
 #include "TensorSizes.hpp"
@@ -24,6 +25,21 @@ int main(int argc, char** argv)
     try
     {
         const Options options = parse(argc, argv);
+        if (!options.inspect.empty())
+        {
+            inspectModel(options.inspect, std::cout);
+            if (!options.engine.empty())
+            {
+                const fs::path enginePath(options.engine);
+                if (!fs::is_regular_file(enginePath))
+                    throw std::runtime_error("Engine file not found: " + options.engine);
+                std::cout << "Engine file: " << options.engine << " (" << fs::file_size(enginePath)
+                          << " bytes)\n";
+                std::cout << "Engine contents: not inspected without CUDA deserialization\n";
+            }
+            return 0;
+        }
+
         Logger logger;
         logger.verbose = options.verbose;
 

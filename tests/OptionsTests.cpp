@@ -105,6 +105,14 @@ TEST(Options, requiredArguments)
     }
 }
 
+TEST(Options, inspection)
+{
+    const auto options = parseArgs({"trt_sr", "--inspect", "model.onnx"});
+    require(options.inspect == "model.onnx", "Inspection path");
+    rejects({"trt_sr", "--inspect", "model.onnx", "-i", "input.png"}, "Mixed modes");
+    rejects({"trt_sr", "--inspect"}, "Missing inspection path");
+}
+
 TEST(Options, numericArguments)
 {
     for (const auto& opt : {"--tile", "--batch", "--scale", "--streams", "--overlap"})
