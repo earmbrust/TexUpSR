@@ -67,19 +67,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PYCODE'
-          import json
-          import os
-          import subprocess
-          with open('build-tidy/compile_commands.json', encoding='utf-8') as stream:
-              entries = json.load(stream)
-          paths = sorted({os.path.realpath(entry['file']) for entry in entries if not entry['file'].endswith('onnx.pb.cc')})
-          if not paths:
-              raise SystemExit('No translation units found')
-          for path in paths:
-              subprocess.run(['clang-tidy-18', '--quiet', '--warnings-as-errors=*', '-p', 'build-tidy', path], check=True)
-          PYCODE
-
+          cmake --build build-tidy --target tidy --parallel 2
   cmake-check:
     name: Pre-build / CMake configuration
     needs: clang-tidy

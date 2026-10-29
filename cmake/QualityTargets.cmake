@@ -64,5 +64,5 @@ foreach(_mode IN ITEMS format-check tidy cppcheck)
       -P "${CMAKE_SOURCE_DIR}/cmake/RunQuality.cmake"
     COMMENT "TexUpSR ${_mode}" VERBATIM)
 endforeach()
-add_dependencies(tidy model_inspection)
+add_dependencies(tidy onnx_generated)
 add_custom_target(quality DEPENDS format-check tidy cppcheck)
