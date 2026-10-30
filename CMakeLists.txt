@@ -12,6 +12,50 @@ endif()
 find_package(OpenCV REQUIRED)
 
 if(TEXUPSR_BUILD_APP)
+  find_package(Protobuf QUIET CONFIG)
+  if(NOT Protobuf_FOUND)
+    find_package(Protobuf REQUIRED)
+  endif()
+  if(WIN32)
+    # The default is a shared Protobuf runtime. Static linking is an explicit opt-in.
+    set(TEXUPSR_PROTOBUF_LINKAGE "SHARED" CACHE STRING "Protobuf linkage: SHARED or STATIC")
+    set_property(CACHE TEXUPSR_PROTOBUF_LINKAGE PROPERTY STRINGS SHARED STATIC)
+    if(NOT TEXUPSR_PROTOBUF_LINKAGE STREQUAL "SHARED" AND
+       NOT TEXUPSR_PROTOBUF_LINKAGE STREQUAL "STATIC")
+      message(FATAL_ERROR "TEXUPSR_PROTOBUF_LINKAGE must be SHARED or STATIC")
+    endif()
+    get_target_property(_pb_target_type protobuf::libprotobuf TYPE)
+    get_target_property(_pb_location protobuf::libprotobuf IMPORTED_LOCATION_RELEASE)
+    if(NOT _pb_location)
+      get_target_property(_pb_location protobuf::libprotobuf IMPORTED_LOCATION)
+    endif()
+    if(TEXUPSR_PROTOBUF_LINKAGE STREQUAL "SHARED")
+      if(NOT _pb_location OR NOT _pb_location MATCHES "[.]dll$")
+        message(FATAL_ERROR
+          "TexUpSR defaults to shared Protobuf, but protobuf::libprotobuf has no DLL location. "
+          "Install a dynamically linked Protobuf package (vcpkg x64-windows), "
+          "or explicitly select -DTEXUPSR_PROTOBUF_LINKAGE=STATIC with a static package.")
+      endif()
+    elseif(_pb_location AND _pb_location MATCHES "[.]dll$")
+      message(FATAL_ERROR "Static Protobuf requested, but protobuf::libprotobuf points to a DLL")
+    endif()
+  endif()
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/onnx-generated")
+  add_library(model_inspection STATIC src/ModelInspection.cpp)
+  target_include_directories(model_inspection PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_BINARY_DIR}/onnx-generated")
+  target_link_libraries(model_inspection PUBLIC protobuf::libprotobuf)
+  if(WIN32 AND TEXUPSR_PROTOBUF_LINKAGE STREQUAL "SHARED")
+    target_compile_definitions(model_inspection PUBLIC PROTOBUF_USE_DLLS)
+  endif()
+  protobuf_generate(TARGET model_inspection LANGUAGE cpp APPEND_PATH
+    PROTOS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/onnx/onnx.proto"
+    PROTOC_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/onnx-generated")
+  add_custom_target(onnx_generated
+    DEPENDS
+      "${CMAKE_CURRENT_BINARY_DIR}/onnx-generated/onnx.pb.h"
+      "${CMAKE_CURRENT_BINARY_DIR}/onnx-generated/onnx.pb.cc")
+
   set(TensorRT_ROOT "$ENV{TENSORRT_ROOT}" CACHE PATH "Optional TensorRT SDK root (empty for system search)")
   find_package(CUDAToolkit REQUIRED)
   find_path(TENSORRT_INCLUDE NAMES NvInfer.h
@@ -35,9 +79,14 @@ if(TEXUPSR_BUILD_APP)
   )
   target_include_directories(trt_sr PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_include_directories(trt_sr PRIVATE "${TENSORRT_INCLUDE}" ${OpenCV_INCLUDE_DIRS})
-  target_link_libraries(trt_sr PRIVATE ${OpenCV_LIBS} CUDA::cudart "${TENSORRT_INFER}" "${TENSORRT_PARSER}")
+  target_link_libraries(trt_sr PRIVATE model_inspection ${OpenCV_LIBS} CUDA::cudart "${TENSORRT_INFER}" "${TENSORRT_PARSER}")
 
   if(WIN32)
+    if(TEXUPSR_PROTOBUF_LINKAGE STREQUAL "SHARED")
+      add_custom_command(TARGET trt_sr POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_pb_location}" "$<TARGET_FILE_DIR:trt_sr>"
+        VERBATIM)
+    endif()
     foreach(_trt_runtime IN ITEMS nvinfer_10.dll nvonnxparser_10.dll)
       set(_trt_runtime_path "${TensorRT_ROOT}/bin/${_trt_runtime}")
       if(NOT EXISTS "${_trt_runtime_path}")
@@ -98,6 +147,14 @@ if(BUILD_TESTING)
   gtest_discover_tests(tensor_sizes_tests DISCOVERY_TIMEOUT 30)
 
   if(TEXUPSR_BUILD_APP)
+  add_executable(model_inspection_tests tests/ModelInspectionTests.cpp)
+  target_link_libraries(model_inspection_tests PRIVATE model_inspection GTest::gtest_main)
+  if(WIN32 AND TEXUPSR_PROTOBUF_LINKAGE STREQUAL "SHARED")
+    add_custom_command(TARGET model_inspection_tests POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_pb_location}" "$<TARGET_FILE_DIR:model_inspection_tests>"
+      VERBATIM)
+  endif()
+  gtest_discover_tests(model_inspection_tests DISCOVERY_TIMEOUT 30)
   add_executable(cuda_half_tests tests/CudaHalfTests.cpp)
   target_include_directories(cuda_half_tests PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
   target_link_libraries(cuda_half_tests PRIVATE GTest::gtest_main)

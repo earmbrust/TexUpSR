@@ -15,7 +15,7 @@ Current model support requires all of the following:
 - Integer output scale matching `--scale` (default: `4`).
 - An ONNX graph accepted by TensorRT's ONNX parser and engine builder.
 
-The model name alone does not establish compatibility. TensorRT conversion, preprocessing assumptions, and output correctness must be verified for each ONNX export. The current preprocessing converts OpenCV BGR pixels to RGB float values in the range 0–1; output is converted back to 8-bit BGR. No model-specific normalization or padding profiles are implemented.
+The model name alone does not establish compatibility. TensorRT conversion, preprocessing assumptions, and output correctness must be verified for each ONNX export. The current preprocessing converts OpenCV BGR pixels to RGB float values in the range 0-1; output is converted back to 8-bit BGR. No model-specific normalization or padding profiles are implemented.
 
 ## Build
 
@@ -26,6 +26,7 @@ Requirements:
 - CUDA Toolkit
 - TensorRT
 - OpenCV with a CMake package configuration
+- Protobuf C++ library and compiler (protoc)
 
 The repository includes a Visual Studio 2026/vcpkg preset. On Windows PowerShell, set `VCPKG_ROOT`, `TENSORRT_ROOT`, and `CUDA_PATH` to your installed dependencies, then configure and build:
 
@@ -38,6 +39,18 @@ You can also configure directly with `-DTensorRT_ROOT=...`, `-DCUDAToolkit_ROOT=
 
 The project has been built and run on Windows with Visual Studio 2026, CUDA 13.0, TensorRT 10.16.1.11, and OpenCV 4.14.0 via vcpkg.
 
+## Model inspection
+
+Use `trt_sr --inspect model.onnx` to report ONNX graph input and output names,
+shapes, data types, opsets, and a spatial scale when static dimensions establish
+one. This operation does not initialize CUDA and does not build an engine.
+TensorRT parser acceptance, engine construction, and runtime compatibility are
+not determined by CPU-only inspection. The ONNX v1.19.0 schema is used under
+its Apache-2.0 license. Protobuf development libraries and `protoc` are required
+to build the application; installed applications do not require `protoc`.
+Supplying `--engine existing.plan` reports its file size, but does not
+deserialize or verify the engine without CUDA.
+
 ## Usage
 
 ```powershell
@@ -46,7 +59,8 @@ The project has been built and run on Windows with Visual Studio 2026, CUDA 13.0
 
 | Option | Description | Default |
 | --- | --- | --- |
-| `-i`, `--input` | Input image path | Required |
+| `--inspect` | CPU-only ONNX model inspection | Off |
+| `-i`, `--input` | Input image path | Required for upscaling |
 | `-o`, `--output` | Output image path | Required |
 | `-m`, `--model` | ONNX model path | Required |
 | `-e`, `--engine` | TensorRT engine path | Generated under `engines/` |
@@ -59,7 +73,7 @@ The project has been built and run on Windows with Visual Studio 2026, CUDA 13.0
 | `-v`, `--verbose` | Verbose diagnostics | Off |
 | `-q`, `--quiet` | Suppress progress | Off |
 | `-d`, `--debug` | Write `debug_first_tile.png` | Off |
-| `-h`, `--help` | Usage | — |
+| `-h`, `--help` | Usage | - |
 
 The application requires an NVIDIA GPU with a supported driver for inference.
 
