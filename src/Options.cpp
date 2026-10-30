@@ -54,6 +54,7 @@ void usage()
 {
     std::cout << "Usage: trt_sr.exe -i input.png -o output.png -m model.onnx [OPTIONS]\n"
               << "  --inspect <path>        CPU-only ONNX inspection\n"
+              << "  --profile <path>        Optional JSON model pixel/layout profile\n"
               << "  -i, --input <path>       Input image\n"
               << "  -o, --output <path>      Output image\n"
               << "  -m, --model <path>       ONNX model\n"
@@ -89,6 +90,8 @@ Options parse(int argc, char** argv)
         };
         if (a == "--inspect")
             o.inspect = val();
+        else if (a == "--profile")
+            o.profile = val();
         else if (a == "-i" || a == "--input")
             o.input = val();
         else if (a == "-o" || a == "--output")
@@ -120,7 +123,8 @@ Options parse(int argc, char** argv)
     }
     if (o.inspect.empty() && (o.input.empty() || o.output.empty() || o.model.empty()))
         throw std::runtime_error("Input, output, and model are required");
-    if (!o.inspect.empty() && (!o.input.empty() || !o.output.empty() || !o.model.empty()))
+    if (!o.inspect.empty() &&
+        (!o.input.empty() || !o.output.empty() || !o.model.empty() || !o.profile.empty()))
         throw std::runtime_error("--inspect cannot be combined with image processing arguments");
     if (o.scale <= 0 || o.streams <= 0 || o.workspace <= 0 || o.overlap < 0 || o.tile < -1 || o.batch < -1)
         throw std::runtime_error("Invalid numeric argument");
