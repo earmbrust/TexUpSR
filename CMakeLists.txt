@@ -42,6 +42,7 @@ if(TEXUPSR_BUILD_APP)
   endif()
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/onnx-generated")
   add_library(model_inspection STATIC src/ModelInspection.cpp)
+  set_target_properties(model_inspection PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
   target_include_directories(model_inspection PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_BINARY_DIR}/onnx-generated")
   target_link_libraries(model_inspection PUBLIC protobuf::libprotobuf)
@@ -75,6 +76,7 @@ if(TEXUPSR_BUILD_APP)
     src/TensorSizes.cpp
     src/Sizing.cpp
     src/ImageTiles.cpp
+    src/ModelProfile.cpp
     src/TilePipeline.cpp
   )
   target_include_directories(trt_sr PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -119,18 +121,22 @@ if(BUILD_TESTING)
   target_include_directories(options_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_link_libraries(options_tests PRIVATE GTest::gtest_main)
   gtest_discover_tests(options_tests DISCOVERY_TIMEOUT 30)
-  add_executable(image_tiles_tests tests/ImageTilesTests.cpp src/ImageTiles.cpp)
+  add_executable(model_profile_tests tests/ModelProfileTests.cpp src/ImageTiles.cpp src/ModelProfile.cpp)
+  target_include_directories(model_profile_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(model_profile_tests PRIVATE ${OpenCV_LIBS} GTest::gtest_main)
+  gtest_discover_tests(model_profile_tests DISCOVERY_TIMEOUT 30)
+  add_executable(image_tiles_tests tests/ImageTilesTests.cpp src/ImageTiles.cpp src/ModelProfile.cpp)
   target_include_directories(image_tiles_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_include_directories(image_tiles_tests PRIVATE ${OpenCV_INCLUDE_DIRS})
   target_link_libraries(image_tiles_tests PRIVATE ${OpenCV_LIBS})
   target_link_libraries(image_tiles_tests PRIVATE GTest::gtest_main)
   gtest_discover_tests(image_tiles_tests DISCOVERY_TIMEOUT 30)
-  add_executable(tile_pipeline_tests tests/TilePipelineTests.cpp src/TilePipeline.cpp src/ImageTiles.cpp)
+  add_executable(tile_pipeline_tests tests/TilePipelineTests.cpp src/TilePipeline.cpp src/ImageTiles.cpp src/ModelProfile.cpp)
   target_include_directories(tile_pipeline_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" ${OpenCV_INCLUDE_DIRS})
   target_link_libraries(tile_pipeline_tests PRIVATE ${OpenCV_LIBS})
   target_link_libraries(tile_pipeline_tests PRIVATE GTest::gtest_main)
   gtest_discover_tests(tile_pipeline_tests DISCOVERY_TIMEOUT 30)
-  add_executable(tile_pipeline_progress_tests tests/TilePipelineProgressTests.cpp src/TilePipeline.cpp src/ImageTiles.cpp)
+  add_executable(tile_pipeline_progress_tests tests/TilePipelineProgressTests.cpp src/TilePipeline.cpp src/ImageTiles.cpp src/ModelProfile.cpp)
   target_include_directories(tile_pipeline_progress_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" ${OpenCV_INCLUDE_DIRS})
   target_link_libraries(tile_pipeline_progress_tests PRIVATE ${OpenCV_LIBS})
   target_link_libraries(tile_pipeline_progress_tests PRIVATE GTest::gtest_main)
@@ -171,6 +177,7 @@ if(TEXUPSR_BUILD_GPU_TESTS)
     src/Sizing.cpp
     src/TilePipeline.cpp
     src/ImageTiles.cpp
+    src/ModelProfile.cpp
   )
   target_include_directories(gpu_inference_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src" "${TENSORRT_INCLUDE}" ${OpenCV_INCLUDE_DIRS})

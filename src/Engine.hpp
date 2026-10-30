@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Options.hpp"
+#include "ModelProfile.hpp"
 #include "Resources.hpp"
 
 #include <filesystem>
@@ -11,7 +12,7 @@
 class Engine
 {
 public:
-    Engine(const Options& options, int tile, int batch, Logger& logger);
+    Engine(const Options& options, int tile, int batch, Logger& logger, const ModelProfile& profile);
 
     nvinfer1::ICudaEngine& Get() const;
     const std::string& InputName() const;
@@ -22,7 +23,8 @@ public:
 private:
     static std::vector<char> Read(const std::filesystem::path& path);
     static void Write(const std::filesystem::path& path, const std::vector<char>& data);
-    static std::vector<char> Build(const Options& options, int tile, int batch, Logger& logger);
+    static std::vector<char> Build(const Options& options, int tile, int batch, Logger& logger,
+                                   const ModelProfile& profile);
 
     TrtPtr<nvinfer1::IRuntime> runtime_;
     TrtPtr<nvinfer1::ICudaEngine> engine_;
