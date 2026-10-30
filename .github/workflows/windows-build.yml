@@ -58,40 +58,25 @@ jobs:
 
   windows:
     needs: [quality, linux-unit]
-    name: ${{ matrix.label }} / C++${{ matrix.standard }}
+    name: Windows AMD64 / ${{ matrix.label }} / C++${{ matrix.standard }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - label: Windows 2022 / Visual Studio 2022
-            runner: windows-2022
-            generator: Visual Studio 17 2022
-            artifact: TexUpSR-windows-x64
+          - label: Visual Studio 2026
+            runner: windows-2025-vs2026
+            generator: Visual Studio 18 2026
+            artifact: TexUpSR-Windows11-AMD64
             standard: '17'
-          - label: Windows 2022 / Visual Studio 2022
-            runner: windows-2022
-            generator: Visual Studio 17 2022
-            artifact: TexUpSR-windows-x64
+          - label: Visual Studio 2026
+            runner: windows-2025-vs2026
+            generator: Visual Studio 18 2026
+            artifact: TexUpSR-Windows11-AMD64
             standard: '20'
-          - label: Windows 2022 / Visual Studio 2022
-            runner: windows-2022
-            generator: Visual Studio 17 2022
-            artifact: TexUpSR-windows-x64
-            standard: '23'
-          - label: Windows 2025 / Visual Studio 2026
+          - label: Visual Studio 2026
             runner: windows-2025-vs2026
             generator: Visual Studio 18 2026
-            artifact: TexUpSR-windows-x64-vs2026
-            standard: '17'
-          - label: Windows 2025 / Visual Studio 2026
-            runner: windows-2025-vs2026
-            generator: Visual Studio 18 2026
-            artifact: TexUpSR-windows-x64-vs2026
-            standard: '20'
-          - label: Windows 2025 / Visual Studio 2026
-            runner: windows-2025-vs2026
-            generator: Visual Studio 18 2026
-            artifact: TexUpSR-windows-x64-vs2026
+            artifact: TexUpSR-Windows11-AMD64
             standard: '23'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
@@ -214,7 +199,7 @@ jobs:
             if (-not (Test-Path (Join-Path $root.FullName $file))) { throw "Missing TensorRT SDK file: $file" }
           }
           "TENSORRT_ROOT=$($root.FullName)" >> $env:GITHUB_ENV
-      - name: Install GoogleTest
+      - name: Install GoogleTest and Protobuf
         run: |
           $ErrorActionPreference = 'Stop'
           $vcpkg = $env:VCPKG_INSTALLATION_ROOT
@@ -225,18 +210,24 @@ jobs:
             & (Join-Path $vcpkg 'bootstrap-vcpkg.bat') -disableMetrics
             if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed' }
           }
-          & (Join-Path $vcpkg 'vcpkg.exe') install gtest:x64-windows
+          & (Join-Path $vcpkg 'vcpkg.exe') install gtest:x64-windows protobuf:x64-windows
           if ($LASTEXITCODE -ne 0) { throw 'GoogleTest installation failed' }
           $gtestDir = Join-Path $vcpkg 'installed/x64-windows/share/gtest'
           if (-not (Test-Path (Join-Path $gtestDir 'GTestConfig.cmake'))) { throw 'GTestConfig.cmake not found' }
           "GTEST_CMAKE_DIR=$gtestDir" >> $env:GITHUB_ENV
+          $protobufDir = Join-Path $vcpkg 'installed/x64-windows/share/protobuf'
+          if (-not (Test-Path (Join-Path $protobufDir 'protobuf-config.cmake'))) { throw 'Protobuf config not found' }
+          "Protobuf_DIR=$protobufDir" >> $env:GITHUB_ENV
+          "VCPKG_ROOT_CI=$vcpkg" >> $env:GITHUB_ENV
+          "VCPKG_TOOLCHAIN=$(Join-Path $vcpkg 'scripts/buildsystems/vcpkg.cmake')" >> $env:GITHUB_ENV
+          (Join-Path $vcpkg 'installed/x64-windows/bin') >> $env:GITHUB_PATH
           $gtestBin = Join-Path $vcpkg 'installed/x64-windows/bin'
           if (-not (Test-Path (Join-Path $gtestBin 'gtest.dll'))) { throw 'GoogleTest runtime DLL not found' }
           $gtestBin >> $env:GITHUB_PATH
           $env:OPENCV_BIN >> $env:GITHUB_PATH
       - name: Configure
         run: |
-          cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DOpenCV_ARCH=x64 -DOpenCV_RUNTIME="$env:OPENCV_RUNTIME" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT" -DGTest_DIR="$env:GTEST_CMAKE_DIR" -DTEXUP_CXX_STANDARD=${{ matrix.standard }}
+          cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DOpenCV_ARCH=x64 -DOpenCV_RUNTIME="$env:OPENCV_RUNTIME" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT" -DGTest_DIR="$env:GTEST_CMAKE_DIR" -DProtobuf_DIR="$env:Protobuf_DIR" -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_TOOLCHAIN" -DTEXUP_CXX_STANDARD=${{ matrix.standard }}
           if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
       - name: Build Release
         run: |
@@ -259,7 +250,7 @@ jobs:
       - name: Package Windows build
         if: matrix.standard == '23'
         run: |
-          $out = 'dist/TexUpSR-windows-x64'
+          $out = 'dist/TexUpSR-Windows11-AMD64'
           New-Item -ItemType Directory -Force $out | Out-Null
           Copy-Item 'build-ci/Release/trt_sr.exe' $out
           Copy-Item 'README.md','LICENSE' $out
@@ -269,6 +260,11 @@ jobs:
           Get-ChildItem "$env:OPENCV_BIN" -Filter 'opencv_world*.dll' | ForEach-Object { Copy-Item $_.FullName $out }
           if (-not (Test-Path $env:CUDART_DLL)) { throw 'Validated CUDA runtime DLL unavailable for packaging' }
           Copy-Item $env:CUDART_DLL $out
+          $vcpkgBin = Join-Path $env:VCPKG_ROOT_CI 'installed/x64-windows/bin'
+          if (-not (Test-Path (Join-Path $vcpkgBin 'libprotobuf.dll'))) { throw 'Protobuf runtime DLL missing for packaging' }
+          Copy-Item (Join-Path $vcpkgBin 'libprotobuf.dll') $out
+          $abseilDll = Join-Path $vcpkgBin 'abseil_dll.dll'
+          if (Test-Path $abseilDll) { Copy-Item $abseilDll $out }
           Compress-Archive -Path "$out/*" -DestinationPath 'dist/${{ matrix.artifact }}.zip' -Force
       - name: Upload Windows build
         if: matrix.standard == '23'

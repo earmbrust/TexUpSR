@@ -149,26 +149,26 @@ jobs:
           ./build-ci/trt_sr --help
   windows:
     needs: cmake-check
-    name: Windows / ${{ matrix.label }} / C++${{ matrix.standard }}
+    name: Windows AMD64 / ${{ matrix.label }} / C++${{ matrix.standard }}
     strategy:
       fail-fast: false
       matrix:
         include:
 
-          - label: Windows 2025 / Visual Studio 2026
+          - label: Visual Studio 2026
             runner: windows-2025-vs2026
             generator: Visual Studio 18 2026
-            artifact: TexUpSR-windows-x64-vs2026
+            artifact: TexUpSR-Windows11-AMD64
             standard: '17'
-          - label: Windows 2025 / Visual Studio 2026
+          - label: Visual Studio 2026
             runner: windows-2025-vs2026
             generator: Visual Studio 18 2026
-            artifact: TexUpSR-windows-x64-vs2026
+            artifact: TexUpSR-Windows11-AMD64
             standard: '20'
-          - label: Windows 2025 / Visual Studio 2026
+          - label: Visual Studio 2026
             runner: windows-2025-vs2026
             generator: Visual Studio 18 2026
-            artifact: TexUpSR-windows-x64-vs2026
+            artifact: TexUpSR-Windows11-AMD64
             standard: '23'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90

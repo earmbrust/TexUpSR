@@ -40,11 +40,11 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: TexUpSR-windows-x64
+          name: TexUpSR-Windows11-AMD64
           path: dist
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/TexUpSR-windows-x64.zip --title "TexUpSR ${{ needs.verify.outputs.version }}" --generate-notes --verify-tag
+          gh release create "$GITHUB_REF_NAME" dist/TexUpSR-Windows11-AMD64.zip --title "TexUpSR ${{ needs.verify.outputs.version }}" --generate-notes --verify-tag

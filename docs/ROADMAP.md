@@ -9,7 +9,7 @@ The items below are planned features, not implemented features. No release dates
 - Single-input, single-output ONNX inference through TensorRT.
 - Three-channel NCHW tensors, FP16 or FP32, with a caller-specified integer scale.
 - Tiled image processing with overlap blending, CUDA streams, and serialized TensorRT engine reuse.
-- Windows builds with Visual Studio 2022 and 2026.
+- Windows AMD64 builds with Visual Studio 2026. The planned consumer release targets Windows 11; runtime compatibility requires validation on Windows 11.
 
 ## Planned features
 
