@@ -27,13 +27,13 @@ void* PinnedBuffer::Data() const
 
 Worker::Worker(nvinfer1::ICudaEngine& engine, size_t inCount, size_t outCount, nvinfer1::DataType inType,
                nvinfer1::DataType outType, std::string inputName, std::string outputName, int tile, int batch,
-               int scale, int overlap)
+               int scale, int overlap, const ModelProfile& profile)
     : context_(engine.createExecutionContext()), input_(TensorBytes(inCount, tensorElementBytes(inType))),
       output_(TensorBytes(outCount, tensorElementBytes(outType))),
       hostInput_(TensorBytes(inCount, tensorElementBytes(inType))),
       hostOutput_(TensorBytes(outCount, tensorElementBytes(outType))), inputName_(std::move(inputName)),
       outputName_(std::move(outputName)), inputType_(inType), outputType_(outType), tile_(tile),
-      batch_(batch), scale_(scale), overlap_(overlap)
+      batch_(batch), scale_(scale), overlap_(overlap), profile_(profile)
 {
     if (!context_)
     {
@@ -63,7 +63,7 @@ BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
 
     for (size_t i = 0; i < tiles.size(); ++i)
     {
-        fillInput(image, tiles[i], tile, overlap, prepared.data() + i * inPer);
+        fillInput(image, tiles[i], tile, overlap, prepared.data() + i * inPer, profile_);
     }
 
     if (inputType_ == nvinfer1::DataType::kFLOAT)
@@ -80,15 +80,18 @@ BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
         }
     }
 
-    if (!context_->setInputShape(inputName_.c_str(), nvinfer1::Dims4(batch, 3, tile, tile)))
+    const auto inShape = modelShape(batch, tile, profile_.layout);
+    if (!context_->setInputShape(inputName_.c_str(),
+                                 nvinfer1::Dims4(inShape[0], inShape[1], inShape[2], inShape[3])))
     {
         throw std::runtime_error("TensorRT setInputShape failed");
     }
 
     const auto dims = context_->getTensorShape(outputName_.c_str());
 
-    if (dims.nbDims != 4 || dims.d[0] != batch || dims.d[1] != 3 || dims.d[2] != outTile ||
-        dims.d[3] != outTile)
+    const auto outShape = modelShape(batch, outTile, profile_.layout);
+    if (dims.nbDims != 4 || dims.d[0] != outShape[0] || dims.d[1] != outShape[1] ||
+        dims.d[2] != outShape[2] || dims.d[3] != outShape[3])
     {
         throw std::runtime_error("Model output shape does not match requested scale");
     }
@@ -138,7 +141,7 @@ BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
             return __half2float(static_cast<const __half*>(hostOutput_.Data())[offset]);
         };
 
-        result.images.push_back(tensorToImage(outTile, sample));
+        result.images.push_back(tensorToImage(outTile, sample, profile_));
     }
 
     return result;
