@@ -1,7 +1,8 @@
 // Copyright (c) 2025-2026 Elden Armbrust. MIT License.
 #include "ImageTiles.hpp"
 #include <algorithm>
-void fillInput(const cv::Mat& src, Tile tilePos, int tile, int overlap, float* dst)
+void fillInput(const cv::Mat& src, Tile tilePos, int tile, int overlap, float* dst,
+               const ModelProfile& profile)
 {
     const size_t plane = static_cast<size_t>(tile) * tile;
     for (int y = 0; y < tile; ++y)
@@ -12,12 +13,22 @@ void fillInput(const cv::Mat& src, Tile tilePos, int tile, int overlap, float* d
         {
             const auto& p = row[std::clamp(tilePos.x + x - overlap, 0, src.cols - 1)];
             const size_t k = static_cast<size_t>(y) * tile + x;
-            dst[k] = p[2] / 255.f;
-            dst[plane + k] = p[1] / 255.f;
-            dst[2 * plane + k] = p[0] / 255.f;
+            for (int c = 0; c < 3; ++c)
+            {
+                const int srcChannel = profile.inputOrder == ChannelOrder::RGB ? 2 - c : c;
+                const size_t index =
+                    profile.layout == TensorLayout::NCHW ? static_cast<size_t>(c) * plane + k : k * 3 + c;
+                dst[index] = (p[srcChannel] / 255.f) * profile.inputScale + profile.inputOffset;
+            }
         }
     }
 }
+
+void fillInput(const cv::Mat& src, Tile tilePos, int tile, int overlap, float* dst)
+{
+    fillInput(src, tilePos, tile, overlap, dst, ModelProfile{});
+}
+
 // Weight tapers only at interior tile edges; the image's outside edges remain fully weighted.
 void blendTile(cv::Mat& accum, cv::Mat& weights, const cv::Mat& sr, Tile pos, int tile, int scale,
                int overlap, int srcW, int srcH)
