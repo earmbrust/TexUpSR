@@ -1,10 +1,17 @@
 // Copyright (c) 2025-2026 Elden Armbrust. MIT License.
 #include "Engine.hpp"
+#include "EngineCache.hpp"
 #include "Sizing.hpp"
 #include "Upscaler.hpp"
 
 #include <NvOnnxParser.h>
 #include <climits>
+#include <chrono>
+#include <system_error>
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -43,15 +50,31 @@ std::vector<char> Engine::Read(const fs::path& path)
 void Engine::Write(const fs::path& path, const std::vector<char>& data)
 {
     if (path.has_parent_path())
-    {
         fs::create_directories(path.parent_path());
-    }
-
-    std::ofstream output(path, std::ios::binary | std::ios::trunc);
-
-    if (!output.write(data.data(), static_cast<std::streamsize>(data.size())))
+    fs::path temporary = path;
+    temporary += ".tmp." + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    try
     {
-        throw std::runtime_error("Cannot write " + path.string());
+        {
+            std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+            if (!output || !output.write(data.data(), static_cast<std::streamsize>(data.size())))
+                throw std::runtime_error("Cannot write temporary engine: " + temporary.string());
+            output.close();
+            if (!output)
+                throw std::runtime_error("Cannot finish writing temporary engine");
+        }
+#ifdef _WIN32
+        if (!MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+            throw std::runtime_error("Cannot replace engine: " + path.string());
+#else
+        fs::rename(temporary, path);
+#endif
+    }
+    catch (...)
+    {
+        std::error_code ignored;
+        fs::remove(temporary, ignored);
+        throw;
     }
 }
 
@@ -142,68 +165,83 @@ std::vector<char> Engine::Build(const Options& options, int tile, int batch, Log
 
 Engine::Engine(const Options& options, int tile, int batch, Logger& logger, const ModelProfile& profile)
 {
+    // An engine plan is specific to the ONNX content, build settings, TensorRT, and GPU.
+    int device = 0;
+    if (cudaGetDevice(&device) != cudaSuccess)
+        throw std::runtime_error("Cannot query CUDA device for engine cache identity");
+    cudaDeviceProp gpu{};
+    if (cudaGetDeviceProperties(&gpu, device) != cudaSuccess)
+        throw std::runtime_error("Cannot query CUDA device properties for engine cache identity");
+    const std::string runtimeIdentity = std::string(gpu.name) + ":" + std::to_string(gpu.major) + ":" +
+                                        std::to_string(gpu.minor) + ":" + std::to_string(NV_TENSORRT_MAJOR) +
+                                        ":" + std::to_string(NV_TENSORRT_MINOR) + ":" +
+                                        std::to_string(NV_TENSORRT_PATCH);
+    const bool automatic = options.engine.empty();
+    const auto identity =
+        automatic ? engineCacheKey(cacheFileDigest(options.model), tile, batch, options.scale,
+                                   options.workspace, profile.layout == TensorLayout::NHWC, runtimeIdentity)
+                  : std::string();
     const fs::path path =
-        options.engine.empty()
-            ? fs::path("engines") /
-                  (fs::path(options.model).stem().string() + "_t" + std::to_string(tile) + "_b" +
-                   std::to_string(batch) + (profile.layout == TensorLayout::NHWC ? "_nhwc" : "") + ".plan")
-            : fs::path(options.engine);
-
-    std::vector<char> bytes;
-
-    if (fs::exists(path))
-    {
-        bytes = Read(path);
-    }
-    else
-    {
-        bytes = Build(options, tile, batch, logger, profile);
-        Write(path, bytes);
-    }
+        automatic ? fs::path("engines") / (fs::path(options.model).stem().string() + "_" + identity + ".plan")
+                  : fs::path(options.engine);
 
     runtime_.reset(nvinfer1::createInferRuntime(logger));
-
     if (!runtime_)
-    {
         throw std::runtime_error("Cannot create TensorRT runtime");
+
+    auto deserialize = [&](const std::vector<char>& bytes) -> bool
+    {
+        if (bytes.empty())
+            return false;
+        engine_.reset(runtime_->deserializeCudaEngine(bytes.data(), bytes.size()));
+        return engine_ && engine_->getNbIOTensors() == 2;
+    };
+
+    bool rebuild = options.overwriteEngine || !fs::exists(path);
+    if (!rebuild)
+    {
+        try
+        {
+            if (!deserialize(Read(path)))
+            {
+                if (!automatic)
+                    throw std::runtime_error(
+                        "Explicit engine cannot be deserialized; use --overwrite-engine to rebuild");
+                rebuild = true;
+            }
+        }
+        catch (const std::exception&)
+        {
+            if (!automatic)
+                throw;
+            rebuild = true;
+        }
     }
 
-    engine_.reset(runtime_->deserializeCudaEngine(bytes.data(), bytes.size()));
-
-    if (!engine_)
+    std::vector<char> pendingBytes;
+    if (rebuild)
     {
-        throw std::runtime_error("Engine deserialization failed; remove stale .plan file");
-    }
-
-    if (engine_->getNbIOTensors() != 2)
-    {
-        throw std::runtime_error("Expected one input and one output tensor");
+        pendingBytes = Build(options, tile, batch, logger, profile);
+        if (!deserialize(pendingBytes))
+            throw std::runtime_error("New TensorRT engine failed deserialization; existing engine preserved");
     }
 
     for (int i = 0; i < engine_->getNbIOTensors(); ++i)
     {
         const char* name = engine_->getIOTensorName(i);
-
         if (engine_->getTensorIOMode(name) == nvinfer1::TensorIOMode::kINPUT)
-        {
             inputName_ = name;
-        }
         else
-        {
             outputName_ = name;
-        }
     }
-
     if (inputName_.empty() || outputName_.empty())
-    {
         throw std::runtime_error("Could not identify engine input/output tensors");
-    }
-
     inputType_ = engine_->getTensorDataType(inputName_.c_str());
     outputType_ = engine_->getTensorDataType(outputName_.c_str());
     tensorElementBytes(inputType_);
     tensorElementBytes(outputType_);
-
+    if (rebuild)
+        Write(path, pendingBytes);
     if (options.verbose)
     {
         std::cout << "Tensor formats: input " << (inputType_ == nvinfer1::DataType::kHALF ? "FP16" : "FP32")

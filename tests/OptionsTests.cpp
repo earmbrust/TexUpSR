@@ -62,20 +62,21 @@ TEST(Options, defaults)
     require(opts.tile == 0 && opts.batch == 0, "Automatic defaults");
     require(opts.scale == 4 && opts.streams == 2 && opts.overlap == 16, "Integer defaults");
     require(opts.workspace == 4.0, "Workspace default");
-    require(!opts.verbose && !opts.quiet && !opts.debug, "Boolean defaults");
+    require(!opts.verbose && !opts.quiet && !opts.debug && !opts.overwriteEngine, "Boolean defaults");
 }
 
 TEST(Options, allOptions)
 {
     auto args = base();
-    args.insert(args.end(),
-                {"--engine", "engine.plan", "--tile", "256", "--batch", "3", "--scale", "2", "--workspace",
-                 "1.25", "--streams", "4", "--overlap", "8", "--verbose", "--quiet", "--debug"});
+    args.insert(args.end(), {"--engine", "engine.plan", "--tile", "256", "--batch", "3", "--scale", "2",
+                             "--workspace", "1.25", "--streams", "4", "--overlap", "8", "--verbose",
+                             "--quiet", "--debug", "--overwrite-engine"});
     const auto o = parseArgs(args);
     require(o.engine == "engine.plan", "Engine path");
     require(o.tile == 256 && o.batch == 3 && o.scale == 2 && o.streams == 4 && o.overlap == 8,
             "Numeric options");
-    require(o.workspace == 1.25 && o.verbose && o.quiet && o.debug, "Workspace and flags");
+    require(o.workspace == 1.25 && o.verbose && o.quiet && o.debug && o.overwriteEngine,
+            "Workspace and flags");
 
     auto aliases = Args{"trt_sr", "--input", "a", "--output", "b", "--model", "c",    "-e", "d",  "-t",
                         "-1",     "-b",      "0", "-s",       "1", "-w",      "0.25", "-v", "-q", "-d"};
@@ -111,6 +112,7 @@ TEST(Options, inspection)
     require(options.inspect == "model.onnx", "Inspection path");
     rejects({"trt_sr", "--inspect", "model.onnx", "-i", "input.png"}, "Mixed modes");
     rejects({"trt_sr", "--inspect"}, "Missing inspection path");
+    rejects({"trt_sr", "--inspect", "model.onnx", "--overwrite-engine"}, "Overwrite in inspection");
 }
 
 TEST(Options, numericArguments)

@@ -42,6 +42,7 @@ Acceptance:
 - Changing the model or build settings cannot silently reuse an unrelated plan.
 - Corrupted automatic caches recover predictably.
 - Cache hits avoid unnecessary rebuilds.
+- `--overwrite-engine` forces rebuilding either automatic caches or explicit engine paths, preserving prior plans on build failure.
 
 ### M4 - Architecture compatibility suite
 

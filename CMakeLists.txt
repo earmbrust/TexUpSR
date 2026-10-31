@@ -117,6 +117,11 @@ if(BUILD_TESTING)
   find_package(GTest CONFIG REQUIRED)
   include(GoogleTest)
 
+  add_executable(engine_cache_tests tests/EngineCacheTests.cpp)
+  target_include_directories(engine_cache_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  target_link_libraries(engine_cache_tests PRIVATE GTest::gtest_main)
+  gtest_discover_tests(engine_cache_tests DISCOVERY_TIMEOUT 30)
+
   add_executable(options_tests tests/OptionsTests.cpp src/Options.cpp)
   target_include_directories(options_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_link_libraries(options_tests PRIVATE GTest::gtest_main)

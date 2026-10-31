@@ -91,6 +91,7 @@ reliably establish channel order or normalization, so use an explicit profile.
 | `-o`, `--output` | Output image path | Required |
 | `-m`, `--model` | ONNX model path | Required |
 | `-e`, `--engine` | TensorRT engine path | Generated under `engines/` |
+| `--overwrite-engine` | Force rebuild and safely replace engine plan | Off |
 | `-t`, `--tile` | Input tile size; `0` or `-1` selects auto | Auto |
 | `-b`, `--batch` | Batch size; `0` or `-1` selects auto | Auto |
 | `-s`, `--scale` | Integer upscaling factor | `4` |
@@ -112,11 +113,19 @@ CPU-only option parsing tests can be run after building:
 ctest --test-dir build-vcpkg -C Release --output-on-failure
 ```
 
-## Engine cache
+## Engine cache identity and overwrite
 
-Automatically generated engine names currently include only the model basename, tile size, and batch size. They do **not** include the model contents, scale, TensorRT version, or GPU identity. Delete a stale `.plan` file when changing models or build environments. Serialized engines are not generally portable across arbitrary GPU and TensorRT combinations.
+Automatic engine cache filenames include a SHA-256 identity derived from ONNX
+contents, effective tile and batch, scale, workspace, tensor layout, GPU
+name/compute capability, and TensorRT runtime version. Valid plans are reused.
+An automatic cache that cannot be read or deserialized is rebuilt. Existing
+explicit `--engine` files are never modified during normal loading; invalid
+explicit plans cause an error rather than being silently replaced.
 
-Improving cache identity and recovery is planned work; see [docs/ROADMAP.md](docs/ROADMAP.md).
+Use `--overwrite-engine` to force a fresh TensorRT build and replace either an
+automatic cache or an explicitly selected `--engine` file. If building or
+validation fails, the old plan is preserved. Engine files are written using
+a same-directory temporary file and replacement operation.
 
 ## Windows runtime requirements
 
