@@ -33,7 +33,7 @@ jobs:
 
   clang-tidy:
     name: Pre-build / Clang-tidy
-    needs: cppcheck
+    # Analysis jobs run independently.
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     container:
@@ -70,7 +70,7 @@ jobs:
           cmake --build build-tidy --target tidy --parallel 2
   cmake-check:
     name: Pre-build / CMake configuration
-    needs: clang-tidy
+    # Configuration checks run independently.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -98,7 +98,7 @@ jobs:
 
   linux:
     name: Linux / ${{ matrix.compiler }} / C++${{ matrix.standard }}
-    needs: cmake-check
+    # Matrix builds can start alongside analysis.
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -148,7 +148,7 @@ jobs:
         run: |
           ./build-ci/trt_sr --help
   windows:
-    needs: cmake-check
+    # Matrix builds can start alongside analysis.
     name: Windows AMD64 / ${{ matrix.label }} / C++${{ matrix.standard }}
     strategy:
       fail-fast: false
@@ -291,6 +291,18 @@ jobs:
             if (-not (Test-Path (Join-Path $root.FullName $file))) { throw "Missing TensorRT SDK file: $file" }
           }
           "TENSORRT_ROOT=$($root.FullName)" >> $env:GITHUB_ENV
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+          key: vcpkg-x64-windows-gtest-protobuf-2026-10-v1
+          restore-keys: |
+            vcpkg-x64-windows-gtest-protobuf-2026-10-
+      - name: Configure vcpkg binary cache
+        run: |
+          $cacheDir = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
+          New-Item -ItemType Directory -Force $cacheDir | Out-Null
+          "VCPKG_DEFAULT_BINARY_CACHE=$cacheDir" >> $env:GITHUB_ENV
       - name: Install GoogleTest and Protobuf
         run: |
           $ErrorActionPreference = 'Stop'
