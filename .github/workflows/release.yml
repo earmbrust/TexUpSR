@@ -32,6 +32,8 @@ jobs:
   build:
     needs: verify
     uses: ./.github/workflows/windows-build.yml
+    with:
+      upload_package: true
     permissions:
       contents: read
   publish:
