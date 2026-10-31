@@ -199,6 +199,18 @@ jobs:
             if (-not (Test-Path (Join-Path $root.FullName $file))) { throw "Missing TensorRT SDK file: $file" }
           }
           "TENSORRT_ROOT=$($root.FullName)" >> $env:GITHUB_ENV
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+          key: vcpkg-x64-windows-gtest-protobuf-2026-10-v1
+          restore-keys: |
+            vcpkg-x64-windows-gtest-protobuf-2026-10-
+      - name: Configure vcpkg binary cache
+        run: |
+          $cacheDir = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
+          New-Item -ItemType Directory -Force $cacheDir | Out-Null
+          "VCPKG_DEFAULT_BINARY_CACHE=$cacheDir" >> $env:GITHUB_ENV
       - name: Install GoogleTest and Protobuf
         run: |
           $ErrorActionPreference = 'Stop'
@@ -248,26 +260,15 @@ jobs:
           if ($LASTEXITCODE -eq 0) { throw 'Invalid option was unexpectedly accepted' }
           $global:LASTEXITCODE = 0
       - name: Package Windows build
-        if: matrix.standard == '23'
+        if: inputs.upload_package && matrix.standard == '23'
         run: |
           $out = 'dist/TexUpSR-Windows11-AMD64'
           New-Item -ItemType Directory -Force $out | Out-Null
           Copy-Item 'build-ci/Release/trt_sr.exe' $out
           Copy-Item 'README.md','LICENSE' $out
-          Copy-Item "$env:TENSORRT_ROOT/bin/nvinfer_10.dll" $out
-          Copy-Item "$env:TENSORRT_ROOT/bin/nvonnxparser_10.dll" $out
-          Get-ChildItem "$env:TENSORRT_ROOT/bin" -Filter 'nvinfer_builder_resource_*.dll' | ForEach-Object { Copy-Item $_.FullName $out }
-          Get-ChildItem "$env:OPENCV_BIN" -Filter 'opencv_world*.dll' | ForEach-Object { Copy-Item $_.FullName $out }
-          if (-not (Test-Path $env:CUDART_DLL)) { throw 'Validated CUDA runtime DLL unavailable for packaging' }
-          Copy-Item $env:CUDART_DLL $out
-          $vcpkgBin = Join-Path $env:VCPKG_ROOT_CI 'installed/x64-windows/bin'
-          if (-not (Test-Path (Join-Path $vcpkgBin 'libprotobuf.dll'))) { throw 'Protobuf runtime DLL missing for packaging' }
-          Copy-Item (Join-Path $vcpkgBin 'libprotobuf.dll') $out
-          $abseilDll = Join-Path $vcpkgBin 'abseil_dll.dll'
-          if (Test-Path $abseilDll) { Copy-Item $abseilDll $out }
           Compress-Archive -Path "$out/*" -DestinationPath 'dist/${{ matrix.artifact }}.zip' -Force
       - name: Upload Windows build
-        if: matrix.standard == '23'
+        if: inputs.upload_package && matrix.standard == '23'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}

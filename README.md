@@ -118,6 +118,21 @@ Automatically generated engine names currently include only the model basename, 
 
 Improving cache identity and recovery is planned work; see [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## Windows runtime requirements
+
+Windows release archives contain `trt_sr.exe`, `README.md`, and `LICENSE` only.
+Third-party runtime DLLs are not bundled. Install compatible x64 versions of
+CUDA (13.2 for CI builds), TensorRT (10.16.1.11), OpenCV (4.12 for CI builds),
+Protobuf (shared runtime), and any runtime libraries they require (including
+Abseil when required by the Protobuf build). The Microsoft Visual C++ runtime
+and an NVIDIA driver compatible with the installed CUDA/TensorRT versions are
+also required. Configure the Windows DLL search path (`PATH`) or an equivalent
+installation method so the application can locate the installed libraries.
+
+A release package is not standalone. Dependency versions and binary ABI must
+match the release build. The SDK and development tools (such as `protoc`) are
+required to build TexUpSR, not to run the executable.
+
 ## Releases
 
 Release publication is triggered by a `vMAJOR.MINOR.PATCH` tag on a commit contained in `main` that matches the version in `CMakeLists.txt`. Redistributing release artifacts must comply with CUDA, TensorRT, OpenCV, and model licenses.
