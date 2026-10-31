@@ -4,6 +4,7 @@
 #include "Upscaler.hpp"
 
 #include <NvOnnxParser.h>
+#include <climits>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -54,7 +55,8 @@ void Engine::Write(const fs::path& path, const std::vector<char>& data)
     }
 }
 
-std::vector<char> Engine::Build(const Options& options, int tile, int batch, Logger& logger)
+std::vector<char> Engine::Build(const Options& options, int tile, int batch, Logger& logger,
+                                const ModelProfile& profile)
 {
     TrtPtr<nvinfer1::IBuilder> builder(nvinfer1::createInferBuilder(logger));
 
@@ -87,10 +89,17 @@ std::vector<char> Engine::Build(const Options& options, int tile, int batch, Log
 
     const auto dims = input->getDimensions();
 
-    if (dims.nbDims != 4 || (dims.d[1] != 3 && dims.d[1] != -1))
+    if (dims.nbDims != 4)
+        throw std::runtime_error("Model input must have four dimensions");
+    const auto requested = modelShape(batch, tile, profile.layout);
+    for (int i = 0; i < dims.nbDims; ++i)
     {
-        throw std::runtime_error("Expected NCHW RGB input");
+        if (dims.d[i] < -1 || dims.d[i] > INT_MAX)
+            throw std::runtime_error("Input model dimension is out of range");
     }
+    validateModelShape({static_cast<int>(dims.d[0]), static_cast<int>(dims.d[1]), static_cast<int>(dims.d[2]),
+                        static_cast<int>(dims.d[3])},
+                       requested, "Input");
 
     TrtPtr<nvinfer1::IBuilderConfig> config(builder->createBuilderConfig());
     config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, workspaceBytes(options.workspace));
@@ -100,19 +109,24 @@ std::vector<char> Engine::Build(const Options& options, int tile, int batch, Log
         config->setFlag(nvinfer1::BuilderFlag::kFP16);
     }
 
-    auto* profile = builder->createOptimizationProfile();
-    const nvinfer1::Dims4 shape(batch, 3, tile, tile);
+    const nvinfer1::Dims4 shape(requested[0], requested[1], requested[2], requested[3]);
 
-    if (!profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, shape) ||
-        !profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, shape) ||
-        !profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, shape))
+    bool dynamic = false;
+    for (int i = 0; i < dims.nbDims; ++i)
+        dynamic |= dims.d[i] == -1;
+    if (dynamic)
     {
-        throw std::runtime_error("Cannot set model input dimensions");
-    }
-
-    if (config->addOptimizationProfile(profile) < 0)
-    {
-        throw std::runtime_error("Cannot add optimization profile");
+        auto* optimizationProfile = builder->createOptimizationProfile();
+        if (!optimizationProfile)
+            throw std::runtime_error("Cannot create optimization profile");
+        if (!optimizationProfile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN,
+                                                shape) ||
+            !optimizationProfile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT,
+                                                shape) ||
+            !optimizationProfile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX,
+                                                shape) ||
+            config->addOptimizationProfile(optimizationProfile) < 0)
+            throw std::runtime_error("Cannot configure dynamic model input profile");
     }
 
     TrtPtr<nvinfer1::IHostMemory> blob(builder->buildSerializedNetwork(*network, *config));
@@ -126,12 +140,13 @@ std::vector<char> Engine::Build(const Options& options, int tile, int batch, Log
     return {first, first + blob->size()};
 }
 
-Engine::Engine(const Options& options, int tile, int batch, Logger& logger)
+Engine::Engine(const Options& options, int tile, int batch, Logger& logger, const ModelProfile& profile)
 {
     const fs::path path =
         options.engine.empty()
-            ? fs::path("engines") / (fs::path(options.model).stem().string() + "_t" + std::to_string(tile) +
-                                     "_b" + std::to_string(batch) + ".plan")
+            ? fs::path("engines") /
+                  (fs::path(options.model).stem().string() + "_t" + std::to_string(tile) + "_b" +
+                   std::to_string(batch) + (profile.layout == TensorLayout::NHWC ? "_nhwc" : "") + ".plan")
             : fs::path(options.engine);
 
     std::vector<char> bytes;
@@ -142,7 +157,7 @@ Engine::Engine(const Options& options, int tile, int batch, Logger& logger)
     }
     else
     {
-        bytes = Build(options, tile, batch, logger);
+        bytes = Build(options, tile, batch, logger, profile);
         Write(path, bytes);
     }
 

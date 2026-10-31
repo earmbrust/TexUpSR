@@ -51,6 +51,32 @@ to build the application; installed applications do not require `protoc`.
 Supplying `--engine existing.plan` reports its file size, but does not
 deserialize or verify the engine without CUDA.
 
+## Optional model profile
+
+TensorRT parses the ONNX graph; TexUpSR handles pixel packing and unpacking.
+Without a profile, existing RGB/NCHW floating-point 0..1 behavior is preserved.
+Use `--profile model.json` for models requiring different pixel conventions:
+
+```json
+{
+  "layout": "nhwc",
+  "input_order": "bgr",
+  "output_order": "bgr",
+  "input_scale": 255.0,
+  "input_offset": 0.0,
+  "output_scale": 0.00392156862745098,
+  "output_offset": 0.0
+}
+```
+
+Input conversion is `(pixel / 255) * input_scale + input_offset`. Output
+conversion is `model_output * output_scale + output_offset` into the
+normalized output image. Tensor layout applies to both input and output.
+Only single-input, single-output, three-channel FP16/FP32 models with an
+integer isotropic scale are supported. Fixed dimensions must match the
+requested tile and batch; incompatible models fail clearly. Metadata cannot
+reliably establish channel order or normalization, so use an explicit profile.
+
 ## Usage
 
 ```powershell
@@ -60,6 +86,7 @@ deserialize or verify the engine without CUDA.
 | Option | Description | Default |
 | --- | --- | --- |
 | `--inspect` | CPU-only ONNX model inspection | Off |
+| `--profile` | JSON pixel/layout profile | Legacy RGB/NCHW conventions |
 | `-i`, `--input` | Input image path | Required for upscaling |
 | `-o`, `--output` | Output image path | Required |
 | `-m`, `--model` | ONNX model path | Required |

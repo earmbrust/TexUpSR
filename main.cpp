@@ -76,7 +76,8 @@ int main(int argc, char** argv)
             throw std::runtime_error("Upscaled dimensions overflow int");
         }
 
-        Engine engine(options, tile, batch, logger);
+        const ModelProfile profile = loadModelProfile(options.profile);
+        Engine engine(options, tile, batch, logger, profile);
         const auto tensors = TensorElements(tile, batch, options.scale);
         const size_t inputCount = tensors.input;
         const size_t outputCount = tensors.output;
@@ -88,9 +89,10 @@ int main(int argc, char** argv)
 
         for (int i = 0; i < options.streams; ++i)
         {
-            workers.emplace_back(std::make_unique<Worker>(
-                engine.Get(), inputCount, outputCount, engine.InputType(), engine.OutputType(),
-                engine.InputName(), engine.OutputName(), tile, batch, options.scale, options.overlap));
+            workers.emplace_back(std::make_unique<Worker>(engine.Get(), inputCount, outputCount,
+                                                          engine.InputType(), engine.OutputType(),
+                                                          engine.InputName(), engine.OutputName(), tile,
+                                                          batch, options.scale, options.overlap, profile));
             inference.push_back(workers.back().get());
         }
 
