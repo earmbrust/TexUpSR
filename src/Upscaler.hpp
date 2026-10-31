@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Inference.hpp"
+#include "ModelProfile.hpp"
 #include "Resources.hpp"
 
 #include <cuda_fp16.h>
@@ -45,7 +46,7 @@ class Worker final : public Inference
 public:
     Worker(nvinfer1::ICudaEngine& engine, size_t inCount, size_t outCount, nvinfer1::DataType inType,
            nvinfer1::DataType outType, std::string inputName, std::string outputName, int tile, int batch,
-           int scale, int overlap);
+           int scale, int overlap, const ModelProfile& profile = {});
 
     ~Worker() override;
 
@@ -69,4 +70,5 @@ private:
     int batch_;
     int scale_;
     int overlap_;
+    ModelProfile profile_;
 };
