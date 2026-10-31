@@ -292,11 +292,12 @@ jobs:
           }
           "TENSORRT_ROOT=$($root.FullName)" >> $env:GITHUB_ENV
       - name: Restore vcpkg binary cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/vcpkg-binary-cache
-          key: vcpkg-x64-windows-gtest-protobuf-2026-10-v1
+          key: vcpkg-windows-2025-vs2026-x64-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.standard }}
           restore-keys: |
+            vcpkg-windows-2025-vs2026-x64-
             vcpkg-x64-windows-gtest-protobuf-2026-10-
       - name: Configure vcpkg binary cache
         run: |
@@ -328,6 +329,11 @@ jobs:
           if (-not (Test-Path (Join-Path $gtestBin 'gtest.dll'))) { throw 'GoogleTest runtime DLL not found' }
           $gtestBin >> $env:GITHUB_PATH
           $env:OPENCV_BIN >> $env:GITHUB_PATH
+      - name: Save vcpkg binary cache
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+          key: vcpkg-windows-2025-vs2026-x64-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.standard }}
       - name: Configure
         run: |
           cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DOpenCV_ARCH=x64 -DOpenCV_RUNTIME="$env:OPENCV_RUNTIME" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT" -DGTest_DIR="$env:GTEST_CMAKE_DIR" -DProtobuf_DIR="$env:Protobuf_DIR" -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_TOOLCHAIN" -DTEXUP_CXX_STANDARD=${{ matrix.standard }}
