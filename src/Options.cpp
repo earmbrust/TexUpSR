@@ -59,6 +59,7 @@ void usage()
               << "  -o, --output <path>      Output image\n"
               << "  -m, --model <path>       ONNX model\n"
               << "  -e, --engine <path>      TensorRT engine path\n"
+              << "  --overwrite-engine      Rebuild and safely replace the engine\n"
               << "  -t, --tile <size>        Tile size (0 = auto)\n"
               << "  -b, --batch <size>       Batch size (0 = auto)\n"
               << "  -s, --scale <factor>     Upscale factor (default 4)\n"
@@ -100,6 +101,8 @@ Options parse(int argc, char** argv)
             o.model = val();
         else if (a == "-e" || a == "--engine")
             o.engine = val();
+        else if (a == "--overwrite-engine")
+            o.overwriteEngine = true;
         else if (a == "-t" || a == "--tile")
             o.tile = integerValue(val(), a);
         else if (a == "-b" || a == "--batch")
@@ -123,8 +126,8 @@ Options parse(int argc, char** argv)
     }
     if (o.inspect.empty() && (o.input.empty() || o.output.empty() || o.model.empty()))
         throw std::runtime_error("Input, output, and model are required");
-    if (!o.inspect.empty() &&
-        (!o.input.empty() || !o.output.empty() || !o.model.empty() || !o.profile.empty()))
+    if (!o.inspect.empty() && (!o.input.empty() || !o.output.empty() || !o.model.empty() ||
+                               !o.profile.empty() || o.overwriteEngine))
         throw std::runtime_error("--inspect cannot be combined with image processing arguments");
     if (o.scale <= 0 || o.streams <= 0 || o.workspace <= 0 || o.overlap < 0 || o.tile < -1 || o.batch < -1)
         throw std::runtime_error("Invalid numeric argument");
