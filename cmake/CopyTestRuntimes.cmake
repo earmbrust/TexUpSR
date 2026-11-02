@@ -36,7 +36,28 @@ file(GET_RUNTIME_DEPENDENCIES
   POST_EXCLUDE_REGEXES
     ".*[/\\][Ww][Ii][Nn][Dd][Oo][Ww][Ss][/\\].*"
   RESOLVED_DEPENDENCIES_VAR _resolved
-  UNRESOLVED_DEPENDENCIES_VAR _unresolved)
+  UNRESOLVED_DEPENDENCIES_VAR _unresolved
+  CONFLICTING_DEPENDENCIES_PREFIX _conflicts)
+
+# A previously deployed DLL beside the executable is the one Windows loads.
+# Do not silently choose between two different external installations.
+foreach(_name IN LISTS _conflicts_FILENAMES)
+  set(_deployed "${TEXUPSR_DEST}/${_name}")
+  set(_candidates "${_conflicts_${_name}}")
+  if(NOT EXISTS "${_deployed}")
+    message(FATAL_ERROR "Conflicting runtime dependencies for ${_name}: ${_candidates}")
+  endif()
+  set(_found FALSE)
+  foreach(_candidate IN LISTS _candidates)
+    if("${_candidate}" STREQUAL "${_deployed}")
+      set(_found TRUE)
+      break()
+    endif()
+  endforeach()
+  if(NOT _found)
+    message(FATAL_ERROR "Existing ${_deployed} is not a resolved candidate for ${_name}: ${_candidates}")
+  endif()
+endforeach()
 
 if(_unresolved)
   list(REMOVE_DUPLICATES _unresolved)
