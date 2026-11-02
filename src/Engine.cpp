@@ -200,6 +200,8 @@ Engine::Engine(const Options& options, int tile, int batch, Logger& logger, cons
     bool rebuild = options.overwriteEngine || !fs::exists(path);
     if (!rebuild)
     {
+        if (!options.quiet)
+            std::cout << "Loading TensorRT engine: " << path.string() << '\n';
         try
         {
             if (!deserialize(Read(path)))
@@ -221,7 +223,19 @@ Engine::Engine(const Options& options, int tile, int batch, Logger& logger, cons
     std::vector<char> pendingBytes;
     if (rebuild)
     {
-        pendingBytes = Build(options, tile, batch, logger, profile);
+        if (!options.quiet)
+            std::cout << "Building TensorRT engine: " << path.string() << std::endl;
+        logger.building = !options.quiet;
+        try
+        {
+            pendingBytes = Build(options, tile, batch, logger, profile);
+        }
+        catch (...)
+        {
+            logger.building = false;
+            throw;
+        }
+        logger.building = false;
         if (!deserialize(pendingBytes))
             throw std::runtime_error("New TensorRT engine failed deserialization; existing engine preserved");
     }
@@ -241,8 +255,16 @@ Engine::Engine(const Options& options, int tile, int batch, Logger& logger, cons
     tensorElementBytes(inputType_);
     tensorElementBytes(outputType_);
     if (rebuild)
+    {
         Write(path, pendingBytes);
-    if (options.verbose)
+        if (!options.quiet)
+            std::cout << "TensorRT engine saved: " << path.string() << '\n';
+    }
+    else if (!options.quiet)
+    {
+        std::cout << "TensorRT engine loaded.\n";
+    }
+    if (options.verbose && !options.quiet)
     {
         std::cout << "Tensor formats: input " << (inputType_ == nvinfer1::DataType::kHALF ? "FP16" : "FP32")
                   << ", output " << (outputType_ == nvinfer1::DataType::kHALF ? "FP16" : "FP32") << '\n';

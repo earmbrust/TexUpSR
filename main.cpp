@@ -11,6 +11,8 @@
 #include <opencv2/opencv.hpp>
 
 #include <filesystem>
+#include <chrono>
+#include <iomanip>
 #include <cstdint>
 #include <climits>
 #include <iostream>
@@ -24,6 +26,7 @@ int main(int argc, char** argv)
 {
     try
     {
+        const auto applicationStart = std::chrono::steady_clock::now();
         const Options options = parse(argc, argv);
         if (!options.inspect.empty())
         {
@@ -77,7 +80,9 @@ int main(int argc, char** argv)
         }
 
         const ModelProfile profile = loadModelProfile(options.profile);
+        const auto engineStart = std::chrono::steady_clock::now();
         Engine engine(options, tile, batch, logger, profile);
+        const auto engineEnd = std::chrono::steady_clock::now();
         const auto tensors = TensorElements(tile, batch, options.scale);
         const size_t inputCount = tensors.input;
         const size_t outputCount = tensors.output;
@@ -89,16 +94,17 @@ int main(int argc, char** argv)
 
         for (int i = 0; i < options.streams; ++i)
         {
-            workers.emplace_back(std::make_unique<Worker>(engine.Get(), inputCount, outputCount,
-                                                          engine.InputType(), engine.OutputType(),
-                                                          engine.InputName(), engine.OutputName(), tile,
-                                                          batch, options.scale, options.overlap, profile));
+            workers.emplace_back(
+                std::make_unique<Worker>(engine.Get(), inputCount, outputCount, engine.InputType(),
+                                         engine.OutputType(), engine.InputName(), engine.OutputName(), tile,
+                                         batch, options.scale, options.overlap, profile, options.benchmark));
             inference.push_back(workers.back().get());
         }
 
         TilePipeline pipeline(tile, batch, options.scale, options.overlap, inference);
         bool debugSaved = false;
 
+        const auto upscaleStart = std::chrono::steady_clock::now();
         const cv::Mat result = pipeline.Run(image,
                                             [&](const BatchResult& completed, size_t processed, size_t total)
                                             {
@@ -119,6 +125,7 @@ int main(int argc, char** argv)
                                                               << " tiles\r" << std::flush;
                                                 }
                                             });
+        const auto upscaleEnd = std::chrono::steady_clock::now();
 
         cv::Mat output;
         result.convertTo(output, CV_8UC3, 255.0);
@@ -134,6 +141,48 @@ int main(int argc, char** argv)
         if (!options.quiet)
         {
             std::cout << "\nWrote " << options.output << '\n';
+        }
+        if (options.benchmark)
+        {
+            const auto totalEnd = std::chrono::steady_clock::now();
+            const auto elapsed = [](auto start, auto end) -> double
+            { return std::chrono::duration<double, std::micro>(end - start).count(); };
+            double inferenceUs = 0.0;
+            size_t inferenceBatches = 0;
+            for (const auto& worker : workers)
+            {
+                inferenceUs += worker->InferenceMicroseconds();
+                inferenceBatches += worker->InferenceBatches();
+            }
+            int device = 0;
+            cudaCheck(cudaGetDevice(&device), "cudaGetDevice benchmark");
+            cudaDeviceProp gpu{};
+            cudaCheck(cudaGetDeviceProperties(&gpu, device), "cudaGetDeviceProperties benchmark");
+            int driver = 0;
+            cudaCheck(cudaDriverGetVersion(&driver), "cudaDriverGetVersion benchmark");
+            size_t freeAfter = 0;
+            size_t totalAfter = 0;
+            cudaCheck(cudaMemGetInfo(&freeAfter, &totalAfter), "cudaMemGetInfo benchmark");
+            const double upscaleUs = elapsed(upscaleStart, upscaleEnd);
+            const double totalUs = elapsed(applicationStart, totalEnd);
+            std::cout << std::fixed << std::setprecision(2) << "\nBenchmark (microseconds):\n"
+                      << "  Inference CUDA event sum: " << inferenceUs << " (" << inferenceBatches
+                      << " batches across " << options.streams << " streams)\n"
+                      << "  Upscaling wall time: " << upscaleUs << "\n"
+                      << "  Engine initialization: " << elapsed(engineStart, engineEnd) << "\n"
+                      << "  Total application: " << totalUs << "\n"
+                      << "  Output pixels/second (upscaling): "
+                      << (upscaleUs > 0 ? static_cast<double>(output.total()) * 1000000.0 / upscaleUs : 0.0)
+                      << "\n  GPU: " << gpu.name << " (compute " << gpu.major << '.' << gpu.minor
+                      << ", CUDA driver " << driver << ")\n"
+                      << "  TensorRT: " << NV_TENSORRT_MAJOR << '.' << NV_TENSORRT_MINOR << '.'
+                      << NV_TENSORRT_PATCH << "\n"
+                      << "  Model: " << options.model << "\n"
+                      << "  Input: " << options.input << " (" << image.cols << 'x' << image.rows << ")\n"
+                      << "  Tile/batch/streams/overlap: " << tile << '/' << batch << '/' << options.streams
+                      << '/' << options.overlap << "\n"
+                      << "  Device memory used before/after (bytes): " << (totalBytes - freeBytes) << '/'
+                      << (totalAfter - freeAfter) << " (not peak VRAM)\n";
         }
         return 0;
     }

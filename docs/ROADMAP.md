@@ -69,6 +69,12 @@ Acceptance:
 - Provide reproducible benchmark commands.
 - Record hardware, driver, TensorRT, model, tile, and batch settings with the results.
 
+Benchmark implementation notes (M5 in progress): `--benchmark` reports CUDA-event kernel execution
+summed across workers (not wall-clock elapsed time during concurrent streams), upscaling
+wall time, complete application time and selected run metadata. A single run is not
+a warm-inference distribution or a measurement of peak VRAM. Reproducible runs
+should pin model, input, tile, batch, streams, overlap, workspace and driver.
+
 ### M6 - Command-line engine pre-generation
 
 Add a command-line operation to build and save a TensorRT engine from an ONNX model without processing an image. Support automated workflows, batch preparation, and scripting.

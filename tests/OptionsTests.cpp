@@ -62,7 +62,8 @@ TEST(Options, defaults)
     require(opts.tile == 0 && opts.batch == 0, "Automatic defaults");
     require(opts.scale == 4 && opts.streams == 2 && opts.overlap == 16, "Integer defaults");
     require(opts.workspace == 4.0, "Workspace default");
-    require(!opts.verbose && !opts.quiet && !opts.debug && !opts.overwriteEngine, "Boolean defaults");
+    require(!opts.verbose && !opts.quiet && !opts.debug && !opts.overwriteEngine && !opts.benchmark,
+            "Boolean defaults");
 }
 
 TEST(Options, allOptions)
@@ -70,12 +71,12 @@ TEST(Options, allOptions)
     auto args = base();
     args.insert(args.end(), {"--engine", "engine.plan", "--tile", "256", "--batch", "3", "--scale", "2",
                              "--workspace", "1.25", "--streams", "4", "--overlap", "8", "--verbose",
-                             "--quiet", "--debug", "--overwrite-engine"});
+                             "--quiet", "--debug", "--overwrite-engine", "--benchmark"});
     const auto o = parseArgs(args);
     require(o.engine == "engine.plan", "Engine path");
     require(o.tile == 256 && o.batch == 3 && o.scale == 2 && o.streams == 4 && o.overlap == 8,
             "Numeric options");
-    require(o.workspace == 1.25 && o.verbose && o.quiet && o.debug && o.overwriteEngine,
+    require(o.workspace == 1.25 && o.verbose && o.quiet && o.debug && o.overwriteEngine && o.benchmark,
             "Workspace and flags");
 
     auto aliases = Args{"trt_sr", "--input", "a", "--output", "b", "--model", "c",    "-e", "d",  "-t",
@@ -113,6 +114,7 @@ TEST(Options, inspection)
     rejects({"trt_sr", "--inspect", "model.onnx", "-i", "input.png"}, "Mixed modes");
     rejects({"trt_sr", "--inspect"}, "Missing inspection path");
     rejects({"trt_sr", "--inspect", "model.onnx", "--overwrite-engine"}, "Overwrite in inspection");
+    rejects({"trt_sr", "--inspect", "model.onnx", "--benchmark"}, "Benchmark in inspection");
 }
 
 TEST(Options, numericArguments)

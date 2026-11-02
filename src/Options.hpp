@@ -6,7 +6,7 @@ struct Options
     std::string input, output, model, engine, inspect, profile;
     int tile = 0, batch = 0, scale = 4, streams = 2, overlap = 16;
     double workspace = 4.0;
-    bool verbose = false, quiet = false, debug = false, overwriteEngine = false;
+    bool verbose = false, quiet = false, debug = false, overwriteEngine = false, benchmark = false;
 };
 
 void usage();

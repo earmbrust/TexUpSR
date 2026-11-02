@@ -291,6 +291,7 @@ jobs:
             if (-not (Test-Path (Join-Path $root.FullName $file))) { throw "Missing TensorRT SDK file: $file" }
           }
           "TENSORRT_ROOT=$($root.FullName)" >> $env:GITHUB_ENV
+          (Join-Path $root.FullName 'bin') >> $env:GITHUB_PATH
       - name: Restore vcpkg binary cache
         uses: actions/cache/restore@v4
         with:

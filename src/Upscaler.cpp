@@ -27,13 +27,13 @@ void* PinnedBuffer::Data() const
 
 Worker::Worker(nvinfer1::ICudaEngine& engine, size_t inCount, size_t outCount, nvinfer1::DataType inType,
                nvinfer1::DataType outType, std::string inputName, std::string outputName, int tile, int batch,
-               int scale, int overlap, const ModelProfile& profile)
+               int scale, int overlap, const ModelProfile& profile, bool benchmark)
     : context_(engine.createExecutionContext()), input_(TensorBytes(inCount, tensorElementBytes(inType))),
       output_(TensorBytes(outCount, tensorElementBytes(outType))),
       hostInput_(TensorBytes(inCount, tensorElementBytes(inType))),
       hostOutput_(TensorBytes(outCount, tensorElementBytes(outType))), inputName_(std::move(inputName)),
       outputName_(std::move(outputName)), inputType_(inType), outputType_(outType), tile_(tile),
-      batch_(batch), scale_(scale), overlap_(overlap), profile_(profile)
+      batch_(batch), scale_(scale), overlap_(overlap), profile_(profile), benchmark_(benchmark)
 {
     if (!context_)
     {
@@ -44,6 +44,16 @@ Worker::Worker(nvinfer1::ICudaEngine& engine, size_t inCount, size_t outCount, n
 Worker::~Worker()
 {
     cudaStreamSynchronize(stream_.value);
+}
+
+double Worker::InferenceMicroseconds() const
+{
+    return inferenceMicroseconds_;
+}
+
+size_t Worker::InferenceBatches() const
+{
+    return inferenceBatches_;
 }
 
 BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
@@ -96,6 +106,19 @@ BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
         throw std::runtime_error("Model output shape does not match requested scale");
     }
 
+    cudaEvent_t start = nullptr;
+    cudaEvent_t end = nullptr;
+    if (benchmark_)
+    {
+        cudaCheck(cudaEventCreate(&start), "cudaEventCreate start");
+        const auto error = cudaEventCreate(&end);
+        if (error != cudaSuccess)
+        {
+            cudaEventDestroy(start);
+            cudaCheck(error, "cudaEventCreate end");
+        }
+    }
+
     try
     {
         cudaCheck(cudaMemcpyAsync(input_.p, hostInput_.Data(), inPer * batch * tensorElementBytes(inputType_),
@@ -108,22 +131,43 @@ BatchResult Worker::Run(const cv::Mat& image, const std::vector<Tile>& tiles)
             throw std::runtime_error("Cannot bind TensorRT tensor addresses");
         }
 
+        if (benchmark_)
+            cudaCheck(cudaEventRecord(start, stream_.value), "cudaEventRecord start");
+
         if (!context_->enqueueV3(stream_.value))
         {
             throw std::runtime_error("TensorRT enqueueV3 failed");
         }
+
+        if (benchmark_)
+            cudaCheck(cudaEventRecord(end, stream_.value), "cudaEventRecord end");
 
         cudaCheck(cudaMemcpyAsync(hostOutput_.Data(), output_.p,
                                   outPer * batch * tensorElementBytes(outputType_), cudaMemcpyDeviceToHost,
                                   stream_.value),
                   "D2H batch");
         cudaCheck(cudaStreamSynchronize(stream_.value), "Batch stream synchronization");
+        if (benchmark_)
+        {
+            float milliseconds = 0.0f;
+            cudaCheck(cudaEventElapsedTime(&milliseconds, start, end), "cudaEventElapsedTime");
+            inferenceMicroseconds_ += static_cast<double>(milliseconds) * 1000.0;
+            ++inferenceBatches_;
+        }
     }
     catch (...)
     {
         cudaStreamSynchronize(stream_.value);
+        if (start)
+            cudaEventDestroy(start);
+        if (end)
+            cudaEventDestroy(end);
         throw;
     }
+    if (start)
+        cudaEventDestroy(start);
+    if (end)
+        cudaEventDestroy(end);
 
     BatchResult result;
     result.tiles = tiles;

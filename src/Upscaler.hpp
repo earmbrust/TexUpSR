@@ -46,11 +46,13 @@ class Worker final : public Inference
 public:
     Worker(nvinfer1::ICudaEngine& engine, size_t inCount, size_t outCount, nvinfer1::DataType inType,
            nvinfer1::DataType outType, std::string inputName, std::string outputName, int tile, int batch,
-           int scale, int overlap, const ModelProfile& profile = {});
+           int scale, int overlap, const ModelProfile& profile = {}, bool benchmark = false);
 
     ~Worker() override;
 
     BatchResult Run(const cv::Mat& image, const std::vector<Tile>& tiles) override;
+    double InferenceMicroseconds() const;
+    size_t InferenceBatches() const;
 
     Worker(const Worker&) = delete;
     Worker& operator=(const Worker&) = delete;
@@ -71,4 +73,7 @@ private:
     int scale_;
     int overlap_;
     ModelProfile profile_;
+    bool benchmark_ = false;
+    double inferenceMicroseconds_ = 0.0;
+    size_t inferenceBatches_ = 0;
 };

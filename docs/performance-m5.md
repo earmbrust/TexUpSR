@@ -1,0 +1,62 @@
+# M5 - Performance measurement
+
+TexUpSR supports `--benchmark` on image-upscaling runs. Benchmarking is measurement only: it does not change tile selection, engine caching, or inference algorithms.
+
+## Measurements and limits
+
+- **Inference CUDA event sum (microseconds):** sum of TensorRT enqueue durations measured using CUDA events for each batch. With multiple streams, event intervals may overlap: **this is not the elapsed inference makespan**. Do not subtract it from upscaling wall time.
+- **Upscaling wall time (microseconds):** preprocessing, enqueue, transfers, tile handling, and blending, excluding engine construction, file loading, and output encoding. This is the primary metric for comparing tiling and stream configurations.
+- **Engine initialization (microseconds):** engine load or build and deserialization, measured together. On a cache miss, this **is not solely the TensorRT compiler's build time**; TensorRT's own build-completion log supplies its own estimate.
+- **Total application (microseconds):** elapsed time within `main` from before argument parsing to after output writing and before benchmark printing. OS process creation/loader startup and benchmark-printing time are excluded. For complete external process duration, use PowerShell `Measure-Command` or a dedicated process timer.
+- **Output pixels/second:** output width multiplied by output height divided by upscaling wall time.
+- **Device memory used before/after:** two CUDA memory snapshots; their difference is a **net allocation change**, not peak VRAM, nor a measure of TensorRT's peak builder allocations. TensorRT build logs sometimes include its own allocator peak, but that number has a different scope.
+
+For apples-to-apples measurements use the same model bytes, image, tile, batch, overlap, streams, workspace, scale, GPU, TensorRT/driver versions, and background workload. Warm the engine first, then repeat cached runs. Compare **median upscaling wall time**, not single runs or cumulative CUDA event sums. Keep engine-build runs separate from steady-state runs.
+
+## Reproducible Windows benchmark
+
+From the repository root, with the runtime dependencies available in `PATH`:
+
+```powershell
+. .\patch\runtime-correction\runtime-env.ps1
+.\scripts\m5-benchmark.ps1
+```
+
+The script executes three cached-engine runs per configuration for Adore FP32 using `samples/busorenkin4.png` (853 x 480), scale 2, batch 1, workspace 2 GiB, overlap 16:
+
+- tile 128, 2 streams
+- tile 256, 2 streams
+- tile 512, 2 streams
+- tile 256, 1 stream
+
+It first performs an engine-preparation run for each configuration if needed, saves the console logs and CSV data under `benchmark-results/m5`, and prints the median upscaling time. The preparation run is **not included** in the repeated-run summary. Runs write their own output file; cached plans remain intact. Building missing engines may take minutes.
+
+To run unit and GPU integration tests, and check for runtime DLL deployment rules, run:
+
+```powershell
+.\scripts\m5-validate.ps1
+```
+
+This uses the existing CMake presets and tests, and checks that the project no longer configures POST_BUILD DLL copying. It **does not delete existing DLLs** from old build directories. To prove a pristine output directory contains no third-party DLL copies, build with a separate fresh CMake binary directory using your existing machine's configure settings; do not assume old files were created by the new build.
+
+## Recorded test measurements: RTX 2080 / TensorRT 10.16.1
+
+Configuration: Adore FP32, busorenkin4.png (853 x 480), output 1706 x 960, batch 1, 2 GiB workspace, overlap 16, CUDA driver 13030. Times in milliseconds; measurements supplied by Windows runtime testing on 2026-11-02.
+
+| Tile | Streams | Tiles | Upscaling | CUDA event sum | Notes |
+|---:|---:|---:|---:|---:|---|
+| 256 | 1 | 12 | 180.65 | 110.76 | Cached engine, one run |
+| 256 | 2 | 12 | 133.46 | 188.13 | Cached engine, one run |
+| 128 | 2 | 45 | 131.28 | 125.07 | Initial engine-build run; no steady-state repeats |
+| 256 | 2 | 12 | 132.61 | 180.10 | Cached engine, one run |
+| 512 | 2 | 2 | 47.71 | 42.99 | Initial engine-build run; not representative of subsequent cached runs |
+| 512 | 2 | 2 | 89.62 | 129.42 | Cached, additional run |
+| 512 | 2 | 2 | 95.70 | 137.74 | Cached repeat 1 |
+| 512 | 2 | 2 | 93.74 | 133.03 | Cached repeat 2 |
+| 512 | 2 | 2 | 90.47 | 130.42 | Cached repeat 3 |
+
+Median of the final three cached tile-512 repeats: **93.74 ms**; median output throughput **17.47 million pixels/s**. The three cached repeats varied from 90.47 to 95.70 ms. The single 47.71 ms build-run result is not a valid estimate of warm median performance. The observed 1-versus-2-stream comparison at tile 256 reduced upscaling time by 26.1%, but needs repeated measurements before general conclusions.
+
+TensorRT reported engine generation of **107.58 s** for tile 128 and **134.575 s** for tile 512; corresponding application-side engine initialization was **110.94 s** and **137.52 s**. These are different timers and should not be interchanged.
+
+Peak VRAM and tiled-preprocessing-only time are **not separately measured** by the current runtime. The benchmark currently reports net memory change and inclusive upscaling wall time. Do not label either as a peak or an isolated tiling overhead measurement. Implementing accurate peak GPU sampling or isolated CPU phase timing would require separate instrumentation and validation; these are not fabricated here.

@@ -69,6 +69,7 @@ void usage()
               << "  -v, --verbose            Verbose logging\n"
               << "  -q, --quiet              Quiet logging\n"
               << "  -d, --debug              Save first upscaled tile\n"
+              << "  --benchmark              Report performance measurements\n"
               << "  -h, --help               Show help\n";
 }
 
@@ -121,13 +122,15 @@ Options parse(int argc, char** argv)
             o.quiet = true;
         else if (a == "-d" || a == "--debug")
             o.debug = true;
+        else if (a == "--benchmark")
+            o.benchmark = true;
         else
             throw std::runtime_error("Unknown argument: " + a);
     }
     if (o.inspect.empty() && (o.input.empty() || o.output.empty() || o.model.empty()))
         throw std::runtime_error("Input, output, and model are required");
     if (!o.inspect.empty() && (!o.input.empty() || !o.output.empty() || !o.model.empty() ||
-                               !o.profile.empty() || o.overwriteEngine))
+                               !o.profile.empty() || o.overwriteEngine || o.benchmark))
         throw std::runtime_error("--inspect cannot be combined with image processing arguments");
     if (o.scale <= 0 || o.streams <= 0 || o.workspace <= 0 || o.overlap < 0 || o.tile < -1 || o.batch < -1)
         throw std::runtime_error("Invalid numeric argument");
