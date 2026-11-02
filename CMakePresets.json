@@ -1,87 +1,94 @@
 {
-    "version":  6,
-    "cmakeMinimumRequired":  {
-                                 "major":  3,
-                                 "minor":  25,
-                                 "patch":  0
-                             },
-    "configurePresets":  [
-                             {
-                                 "name":  "windows-vs2026",
-                                 "displayName":  "Windows - Visual Studio 2026 (vcpkg)",
-                                 "generator":  "Visual Studio 18 2026",
-                                 "architecture":  "x64",
-                                 "binaryDir":  "${sourceDir}/build-vcpkg",
-                                 "cacheVariables":  {
-                                                        "CMAKE_TOOLCHAIN_FILE":  "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-                                                        "VCPKG_TARGET_TRIPLET":  "x64-windows",
-                                                        "TensorRT_ROOT":  "$env{TENSORRT_ROOT}",
-                                                        "CUDAToolkit_ROOT":  "$env{CUDA_PATH}"
-                                                    }
-                             },
-                             {
-                                 "name":  "windows-analysis",
-                                 "displayName":  "Windows - Ninja clang-tidy compilation database",
-                                 "generator":  "Ninja",
-                                 "binaryDir":  "${sourceDir}/build-analysis",
-                                 "cacheVariables":  {
-                                                        "CMAKE_BUILD_TYPE":  "Release",
-                                                        "CMAKE_EXPORT_COMPILE_COMMANDS":  "ON",
-                                                        "CMAKE_TOOLCHAIN_FILE":  "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-                                                        "VCPKG_TARGET_TRIPLET":  "x64-windows",
-                                                        "TensorRT_ROOT":  "$env{TENSORRT_ROOT}",
-                                                        "CUDAToolkit_ROOT":  "$env{CUDA_PATH}"
-                                                    }
-                             },
-                             {
-                                 "name":  "windows-unit",
-                                 "displayName":  "Windows - unit tests",
-                                 "inherits":  "windows-analysis",
-                                 "binaryDir":  "${sourceDir}/build-unit-ninja",
-                                 "cacheVariables":  {
-                                                        "CMAKE_EXPORT_COMPILE_COMMANDS":  "OFF",
-                                                        "TEXUPSR_BUILD_APP":  "OFF",
-                                                        "TEXUPSR_BUILD_GPU_TESTS":  "OFF"
-                                                    }
-                             },
-                             {
-                                 "name":  "linux-release",
-                                 "displayName":  "Linux - Ninja Release (system or custom NVIDIA SDK)",
-                                 "generator":  "Ninja",
-                                 "binaryDir":  "${sourceDir}/build-linux",
-                                 "condition":  {
-                                                   "type":  "equals",
-                                                   "lhs":  "${hostSystemName}",
-                                                   "rhs":  "Linux"
-                                               },
-                                 "cacheVariables":  {
-                                                        "CMAKE_BUILD_TYPE":  "Release",
-                                                        "CMAKE_EXPORT_COMPILE_COMMANDS":  "ON"
-                                                    }
-                             }
-                         ],
-    "buildPresets":  [
-                         {
-                             "name":  "windows-release",
-                             "configurePreset":  "windows-vs2026",
-                             "configuration":  "Release"
-                         },
-                         {
-                             "name":  "windows-unit",
-                             "configurePreset":  "windows-unit"
-                         },
-                         {
-                             "name":  "linux-release",
-                             "configurePreset":  "linux-release"
-                         }
-                     ],
-    "testPresets":  [
-                        {
-                            "name":  "windows-unit",
-                            "configurePreset":  "windows-unit",
-                            "output":  {
-                                           "outputOnFailure":  true
-                                       }
-                        }
-                    ]
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default build (select compiler via CMake environment)",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "integration",
+      "displayName": "GPU integration tests",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build-integration",
+      "cacheVariables": {
+        "TEXUPSR_BUILD_GPU_TESTS": "ON"
+      }
+    },
+    {
+      "name": "analysis",
+      "displayName": "Ninja analysis compilation database",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-analysis",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "unit",
+      "displayName": "CPU-only unit tests",
+      "inherits": "analysis",
+      "binaryDir": "${sourceDir}/build-unit",
+      "cacheVariables": {
+        "TEXUPSR_BUILD_APP": "OFF",
+        "TEXUPSR_BUILD_GPU_TESTS": "OFF",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "build",
+      "configurePreset": "default",
+      "configuration": "Release"
+    },
+    {
+      "name": "integration",
+      "configurePreset": "integration",
+      "configuration": "Release"
+    },
+    {
+      "name": "unit",
+      "configurePreset": "unit",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "test",
+      "configurePreset": "default",
+      "configuration": "Release",
+      "filter": {
+        "include": {
+          "label": "unit"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "integration",
+      "configurePreset": "integration",
+      "configuration": "Release",
+      "filter": {
+        "include": {
+          "label": "integration"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
 }

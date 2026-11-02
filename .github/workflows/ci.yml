@@ -323,7 +323,6 @@ jobs:
           $protobufDir = Join-Path $vcpkg 'installed/x64-windows/share/protobuf'
           if (-not (Test-Path (Join-Path $protobufDir 'protobuf-config.cmake'))) { throw 'Protobuf config not found' }
           "Protobuf_DIR=$protobufDir" >> $env:GITHUB_ENV
-          "VCPKG_TOOLCHAIN=$(Join-Path $vcpkg 'scripts/buildsystems/vcpkg.cmake')" >> $env:GITHUB_ENV
           (Join-Path $vcpkg 'installed/x64-windows/bin') >> $env:GITHUB_PATH
           $gtestBin = Join-Path $vcpkg 'installed/x64-windows/bin'
           if (-not (Test-Path (Join-Path $gtestBin 'gtest.dll'))) { throw 'GoogleTest runtime DLL not found' }
@@ -336,7 +335,7 @@ jobs:
           key: vcpkg-windows-2025-vs2026-x64-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.standard }}
       - name: Configure
         run: |
-          cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DOpenCV_ARCH=x64 -DOpenCV_RUNTIME="$env:OPENCV_RUNTIME" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT" -DGTest_DIR="$env:GTEST_CMAKE_DIR" -DProtobuf_DIR="$env:Protobuf_DIR" -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_TOOLCHAIN" -DTEXUP_CXX_STANDARD=${{ matrix.standard }}
+          cmake -S . -B build-ci -G '${{ matrix.generator }}' -A x64 -DOpenCV_DIR="$env:OPENCV_BUILD" -DOpenCV_ARCH=x64 -DOpenCV_RUNTIME="$env:OPENCV_RUNTIME" -DCUDAToolkit_ROOT="$env:CUDA_PATH" -DTensorRT_ROOT="$env:TENSORRT_ROOT" -DGTest_DIR="$env:GTEST_CMAKE_DIR" -DProtobuf_DIR="$env:Protobuf_DIR" -DTEXUP_CXX_STANDARD=${{ matrix.standard }}
           if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
       - name: Build Release
         run: |

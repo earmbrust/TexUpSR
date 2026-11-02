@@ -11,7 +11,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <windows.h>
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -129,7 +129,7 @@ void RunInference(const fs::path& modelPath, const fs::path& cachePath)
 
     for (int pass = 0; pass < 2; ++pass)
     {
-        Engine engine(options, options.tile, options.batch, logger);
+        Engine engine(options, options.tile, options.batch, logger, ModelProfile{});
         const size_t elements = static_cast<size_t>(options.batch) * 3 * options.tile * options.tile;
         std::vector<std::unique_ptr<Worker>> workers;
         std::vector<Inference*> inference;
@@ -168,7 +168,7 @@ void RunInference(const fs::path& modelPath, const fs::path& cachePath)
     bool rejected = false;
     try
     {
-        Engine invalid(options, options.tile, options.batch, logger);
+        Engine invalid(options, options.tile, options.batch, logger, ModelProfile{});
     }
     catch (const std::runtime_error&)
     {
@@ -176,6 +176,79 @@ void RunInference(const fs::path& modelPath, const fs::path& cachePath)
     }
     Require(rejected, "Corrupt engine cache was accepted");
 }
+
+void RunM4Reference(const fs::path& fixtureDirectory, const fs::path& directory, const std::string& name)
+{
+    Options options;
+    options.model = (fixtureDirectory / (name + ".onnx")).string();
+    options.engine = (directory / (name + ".plan")).string();
+    options.workspace = 1.0;
+    options.scale = 2;
+    options.streams = 2;
+    options.overlap = 0;
+    options.batch = 1;
+    options.tile = 8;
+    Logger logger;
+
+    cv::Mat input(8, 8, CV_8UC3);
+    for (int y = 0; y < 8; ++y)
+        for (int x = 0; x < 8; ++x)
+            input.at<cv::Vec3b>(y, x) = cv::Vec3b((x * 19 + y * 7) % 256,
+                                                     (30 + x * 11 + y * 9) % 256,
+                                                     (80 + x * 3 + y * 13) % 256);
+
+    Engine engine(options, options.tile, options.batch, logger, ModelProfile{});
+    const size_t inCount = 3 * 8 * 8;
+    const size_t outCount = 3 * 16 * 16;
+    std::vector<std::unique_ptr<Worker>> workers;
+    std::vector<Inference*> inference;
+    for (int i = 0; i < options.streams; ++i)
+    {
+        workers.emplace_back(std::make_unique<Worker>(engine.Get(), inCount, outCount,
+            engine.InputType(), engine.OutputType(), engine.InputName(), engine.OutputName(),
+            options.tile, options.batch, options.scale, options.overlap));
+        inference.push_back(workers.back().get());
+    }
+    TilePipeline pipeline(options.tile, options.batch, options.scale, options.overlap, inference);
+    const cv::Mat actual = pipeline.Run(input);
+    Require(actual.rows == 16 && actual.cols == 16 && actual.type() == CV_32FC3,
+            name + ": unexpected output dimensions or type");
+    const fs::path referencePath = fixtureDirectory / (name + ".f32");
+    std::ifstream reference(referencePath, std::ios::binary | std::ios::ate);
+    Require(static_cast<bool>(reference), name + ": missing numerical reference");
+    Require(reference.tellg() == static_cast<std::streamoff>(outCount * sizeof(float)),
+            name + ": unexpected reference size");
+    reference.seekg(0);
+    std::vector<float> expected(outCount);
+    reference.read(reinterpret_cast<char*>(expected.data()),
+                   static_cast<std::streamsize>(outCount * sizeof(float)));
+    Require(static_cast<bool>(reference), name + ": reference read failed");
+    float maxDifference = 0.f;
+    for (int y = 0; y < 16; ++y)
+    {
+        for (int x = 0; x < 16; ++x)
+        {
+            const auto pixel = actual.at<cv::Vec3f>(y, x);
+            for (int c = 0; c < 3; ++c)
+            {
+                const float got = pixel[c];
+                const float want = expected[(y * 16 + x) * 3 + c];
+                Require(std::isfinite(got), name + ": non-finite output at " +
+                    std::to_string(x) + "," + std::to_string(y));
+                const float difference = std::abs(got - want);
+                maxDifference = std::max(maxDifference, difference);
+                Require(difference <= 0.003f + 0.003f * std::abs(want),
+                    name + ": numerical mismatch at " + std::to_string(x) + "," +
+                    std::to_string(y) + " channel " + std::to_string(c) +
+                    ": actual " + std::to_string(got) + ", expected " +
+                    std::to_string(want));
+            }
+        }
+    }
+    std::cout << "M4 " << name << " reference PASS; maximum absolute difference "
+              << maxDifference << '\n';
+}
+
 } // namespace
 
 int main()
@@ -191,13 +264,17 @@ int main()
         const fs::path modelPath(TEXUPSR_GPU_MODEL_PATH);
         Require(fs::exists(modelPath), "GPU test ONNX fixture is missing");
         const fs::path directory =
-            fs::temp_directory_path() / ("texupsr-gpu-test-" + std::to_string(GetCurrentProcessId()));
+            fs::temp_directory_path() / ("texupsr-gpu-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         fs::create_directories(directory);
         const fs::path cachePath = directory / "relu.plan";
         try
         {
             fs::remove(cachePath);
             RunInference(modelPath, cachePath);
+            const fs::path m4Fixtures(TEXUPSR_M4_FIXTURE_DIR);
+            RunM4Reference(m4Fixtures, directory, "cnn_2x");
+            RunM4Reference(m4Fixtures, directory, "rrdb_style_2x");
+            RunM4Reference(m4Fixtures, directory, "attention_2x");
             fs::remove_all(directory);
         }
         catch (...)
