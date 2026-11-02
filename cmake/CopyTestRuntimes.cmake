@@ -7,6 +7,13 @@ if(POLICY CMP0207)
 endif()
 
 string(REPLACE "|" ";" _search "${TEXUPSR_SEARCH}")
+# Include the runtime loader's configured directories without SDK-specific paths.
+# CI and local development can add package runtime directories to PATH.
+if(DEFINED ENV{PATH})
+  string(REPLACE "\\" "/" _runtime_path "$ENV{PATH}")
+  list(APPEND _search ${_runtime_path})
+endif()
+list(REMOVE_DUPLICATES _search)
 set(_dirs)
 foreach(_dir IN LISTS _search)
   if(IS_DIRECTORY "${_dir}")
