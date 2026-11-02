@@ -58,6 +58,12 @@ Acceptance:
 
 Benchmark model build time, warm inference latency, throughput, VRAM usage, tiling overhead, and multi-stream scaling on identified hardware. Evaluate optimization changes against the same inputs and models.
 
+Add an optional `--benchmark` flag that reports:
+
+- Inference time in microseconds: TensorRT GPU execution measured with CUDA events.
+- Upscaling time in microseconds: preprocessing, inference, tile handling, and blending, excluding engine initialization and disk I/O.
+- Total time in microseconds: complete application execution, including startup, engine loading, and image I/O.
+
 Acceptance:
 
 - Provide reproducible benchmark commands.
