@@ -184,6 +184,9 @@ Engine::Engine(const Options& options, int tile, int batch, Logger& logger, cons
     const fs::path path =
         automatic ? fs::path("engines") / (fs::path(options.model).stem().string() + "_" + identity + ".plan")
                   : fs::path(options.engine);
+    if (options.buildEngine && fs::exists(path) && !options.overwriteEngine)
+        throw std::runtime_error("Engine already exists: " + path.string() +
+                                 " (use --overwrite-engine to replace)");
 
     runtime_.reset(nvinfer1::createInferRuntime(logger));
     if (!runtime_)
@@ -254,6 +257,28 @@ Engine::Engine(const Options& options, int tile, int batch, Logger& logger, cons
     outputType_ = engine_->getTensorDataType(outputName_.c_str());
     tensorElementBytes(inputType_);
     tensorElementBytes(outputType_);
+    if (options.buildEngine)
+    {
+        TrtPtr<nvinfer1::IExecutionContext> context(engine_->createExecutionContext());
+        if (!context)
+            throw std::runtime_error("Cannot create TensorRT context for engine validation");
+        const auto inputShape = modelShape(batch, tile, profile.layout);
+        if (!context->setInputShape(inputName_.c_str(), nvinfer1::Dims4(inputShape[0], inputShape[1],
+                                                                        inputShape[2], inputShape[3])))
+            throw std::runtime_error("Cannot set engine input shape");
+        const int64_t outputTile = static_cast<int64_t>(tile) * options.scale;
+        if (outputTile > INT_MAX)
+            throw std::runtime_error("Upscaled tile dimensions overflow int");
+        const auto expected = modelShape(batch, static_cast<int>(outputTile), profile.layout);
+        const auto actual = context->getTensorShape(outputName_.c_str());
+        if (actual.nbDims != 4)
+            throw std::runtime_error("Engine output must have four dimensions");
+        for (int i = 0; i < 4; ++i)
+        {
+            if (actual.d[i] != expected[i])
+                throw std::runtime_error("Model output shape does not match requested scale");
+        }
+    }
     if (rebuild)
     {
         Write(path, pendingBytes);

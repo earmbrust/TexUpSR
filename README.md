@@ -88,9 +88,22 @@ reliably establish channel order or normalization, so use an explicit profile.
 .\build-integration\Release\trt_sr.exe -i input.png -o output.png -m model.onnx --scale 4
 ```
 
+To generate an engine without processing an image, specify a model, an explicit plan path,
+positive tile and batch sizes, and the other required model settings:
+
+```powershell
+.\build-integration\Release\trt_sr.exe --build-engine -m model.onnx -e model.plan -t 256 -b 1 -s 2
+```
+
+This checks TensorRT model requirements and the resulting output shape before saving.
+It refuses an existing engine path unless `--overwrite-engine` is supplied.
+Pre-generation does not use `--input` or `--output`. Use matching model, tile,
+batch, scale, and layout settings when loading the engine for normal upscaling.
+
 | Option | Description | Default |
 | --- | --- | --- |
 | `--inspect` | CPU-only ONNX model inspection | Off |
+| `--build-engine` | Build an explicit TensorRT engine without an image | Off |
 | `--benchmark` | Print CUDA timing, wall time, throughput, and device memory snapshots | Off |
 | `--profile` | JSON pixel/layout profile | Legacy RGB/NCHW conventions |
 | `-i`, `--input` | Input image path | Required for upscaling |
@@ -136,6 +149,12 @@ Use `--overwrite-engine` to force a fresh TensorRT build and replace either an
 automatic cache or an explicitly selected `--engine` file. If building or
 validation fails, the old plan is preserved. Engine files are written using
 a same-directory temporary file and replacement operation.
+
+Serialized TensorRT engines are not generally portable between GPU architectures,
+TensorRT releases, platforms, or incompatible runtime environments. Generate and
+use an engine on the intended target GPU and TensorRT installation. Model profiles
+control image conversion; pre-generation must use the same tensor layout as
+inference. Incompatible plans may fail to deserialize or execute.
 
 ## Windows runtime requirements
 

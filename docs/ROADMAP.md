@@ -94,4 +94,4 @@ Acceptance:
 - Preserve the current build and load diagnostics, `--quiet`/`--verbose` behavior, and `--overwrite-engine` safety rules.
 - Preserve the no-runtime-DLL-copy build and distribution policy.
 
-M6 must reuse the existing `Engine` build and serialization path. It must not require input or output image arguments or perform image processing. The exact CLI spelling for the new operation has not been chosen; do not reuse existing short options (`-s` is scale, `-d` is debug).
+M6 uses `--build-engine` with `--model`, `--engine`, explicit positive `--tile` and `--batch`, and relevant build options. It reuses the existing `Engine` build and serialization path without loading an input image or performing image processing. The existing short options remain unchanged (`-s` is scale, `-d` is debug). M6 remains in progress until implementation and acceptance are complete.

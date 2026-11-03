@@ -62,7 +62,8 @@ TEST(Options, defaults)
     require(opts.tile == 0 && opts.batch == 0, "Automatic defaults");
     require(opts.scale == 4 && opts.streams == 2 && opts.overlap == 16, "Integer defaults");
     require(opts.workspace == 4.0, "Workspace default");
-    require(!opts.verbose && !opts.quiet && !opts.debug && !opts.overwriteEngine && !opts.benchmark,
+    require(!opts.verbose && !opts.quiet && !opts.debug && !opts.overwriteEngine && !opts.benchmark &&
+                !opts.buildEngine,
             "Boolean defaults");
 }
 
@@ -143,5 +144,36 @@ TEST(Options, numericArguments)
     auto opts = parseArgs(args);
     require(opts.overlap == 0 && std::abs(opts.workspace - 0.001) < 1e-15 && opts.scale == 1,
             "Zero overlap and finite fractional workspace");
+}
+TEST(Options, enginePreGeneration)
+{
+    const auto opts =
+        parseArgs({"trt_sr", "--build-engine", "-m", "model.onnx", "-e", "out.plan", "-t", "256", "-b", "2",
+                   "-s", "2", "-w", "1", "--profile", "model.json", "--overwrite-engine", "-q"});
+    require(opts.buildEngine && opts.model == "model.onnx" && opts.engine == "out.plan",
+            "Engine generation paths");
+    require(opts.tile == 256 && opts.batch == 2 && opts.scale == 2 && opts.workspace == 1.0,
+            "Engine generation settings");
+    require(opts.overwriteEngine && opts.quiet && opts.profile == "model.json", "Engine generation flags");
+    require(opts.input.empty() && opts.output.empty(), "Engine generation does not require images");
+
+    rejects({"trt_sr", "--build-engine", "-m", "model.onnx", "-t", "256", "-b", "1"}, "Missing engine path");
+    rejects({"trt_sr", "--build-engine", "-e", "out.plan", "-t", "256", "-b", "1"}, "Missing model");
+    rejects({"trt_sr", "--build-engine", "-m", "model.onnx", "-e", "out.plan"}, "Automatic tile/batch");
+    rejects({"trt_sr", "--build-engine", "-m", "model.onnx", "-e", "out.plan", "-t", "256", "-b", "0"},
+            "Automatic batch");
+    rejects({"trt_sr", "--build-engine", "-m", "model.onnx", "-e", "out.plan", "-t", "256", "-b", "1", "-i",
+             "image.png"},
+            "Image input");
+    rejects({"trt_sr", "--build-engine", "-m", "model.onnx", "-e", "out.plan", "-t", "256", "-b", "1", "-o",
+             "image.png"},
+            "Image output");
+    rejects({"trt_sr", "--build-engine", "-m", "model.onnx", "-e", "out.plan", "-t", "256", "-b", "1",
+             "--benchmark"},
+            "Benchmark mode");
+    rejects(
+        {"trt_sr", "--build-engine", "-m", "model.onnx", "-e", "out.plan", "-t", "256", "-b", "1", "--debug"},
+        "Debug tile");
+    rejects({"trt_sr", "--build-engine", "--inspect", "model.onnx"}, "Conflicting operations");
 }
 } // namespace
