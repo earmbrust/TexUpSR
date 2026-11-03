@@ -2,7 +2,7 @@
 
 TexUpSR is a TensorRT-based image upscaler. ONNX is its model input format. Additional inference runtimes are not planned.
 
-M1 through M5 are implemented and merged. Their original scope and acceptance criteria are retained below as a record of the work. M6 is next and has not yet been implemented. No release dates are assigned.
+M1 through M6 are implemented and merged. Their original scope and acceptance criteria are retained below as a record of the work. No release dates are assigned.
 
 ## Current baseline - 0.1.0
 
@@ -76,7 +76,7 @@ a warm-inference distribution or a measurement of peak VRAM. Reproducible runs
 should pin model, input, tile, batch, streams, overlap, workspace and driver.
 See [performance-m5.md](performance-m5.md) for recorded results, measurement limits, and reproducible commands.
 
-### M6 - Command-line engine pre-generation (next)
+### M6 - Command-line engine pre-generation (completed)
 
 Add a command-line operation to build and save a TensorRT engine from an ONNX model without processing an image. Support automated workflows, batch preparation, and scripting.
 
@@ -94,4 +94,4 @@ Acceptance:
 - Preserve the current build and load diagnostics, `--quiet`/`--verbose` behavior, and `--overwrite-engine` safety rules.
 - Preserve the no-runtime-DLL-copy build and distribution policy.
 
-M6 uses `--build-engine` with `--model`, `--engine`, explicit positive `--tile` and `--batch`, and relevant build options. It reuses the existing `Engine` build and serialization path without loading an input image or performing image processing. The existing short options remain unchanged (`-s` is scale, `-d` is debug). M6 remains in progress until implementation and acceptance are complete.
+M6 uses `--build-engine` with `--model`, `--engine`, explicit positive `--tile` and `--batch`, and relevant build options. It reuses the existing `Engine` build and serialization path without loading an input image or performing image processing. The existing short options remain unchanged (`-s` is scale, `-d` is debug). M6 was completed and merged through pull request #15 (merge commit 1a4cc2d).
