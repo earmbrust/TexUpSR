@@ -9,9 +9,12 @@
 struct Logger final : nvinfer1::ILogger
 {
     bool verbose = false;
+    bool quiet = false;
+    bool building = false;
     void log(Severity s, const char* msg) noexcept override
     {
-        if (s <= (verbose ? Severity::kINFO : Severity::kWARNING))
+        const Severity limit = !quiet && (verbose || building) ? Severity::kINFO : Severity::kWARNING;
+        if (s <= limit)
             std::cerr << "TensorRT: " << msg << '\n';
     }
 };
