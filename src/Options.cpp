@@ -54,6 +54,7 @@ void usage()
 {
     std::cout << "Usage: trt_sr.exe -i input.png -o output.png -m model.onnx [OPTIONS]\n"
               << "  --inspect <path>        CPU-only ONNX inspection\n"
+              << "  --build-engine          Generate a TensorRT engine without an input image\n"
               << "  --profile <path>        Optional JSON model pixel/layout profile\n"
               << "  -i, --input <path>       Input image\n"
               << "  -o, --output <path>      Output image\n"
@@ -92,6 +93,8 @@ Options parse(int argc, char** argv)
         };
         if (a == "--inspect")
             o.inspect = val();
+        else if (a == "--build-engine")
+            o.buildEngine = true;
         else if (a == "--profile")
             o.profile = val();
         else if (a == "-i" || a == "--input")
@@ -127,11 +130,25 @@ Options parse(int argc, char** argv)
         else
             throw std::runtime_error("Unknown argument: " + a);
     }
-    if (o.inspect.empty() && (o.input.empty() || o.output.empty() || o.model.empty()))
+    if (!o.inspect.empty())
+    {
+        if (o.buildEngine || !o.input.empty() || !o.output.empty() || !o.model.empty() ||
+            !o.profile.empty() || o.overwriteEngine || o.benchmark)
+            throw std::runtime_error("--inspect cannot be combined with image processing arguments");
+    }
+    else if (o.buildEngine)
+    {
+        if (!o.input.empty() || !o.output.empty())
+            throw std::runtime_error("--build-engine does not accept image paths");
+        if (o.model.empty() || o.engine.empty())
+            throw std::runtime_error("--build-engine requires --model and --engine");
+        if (o.tile <= 0 || o.batch <= 0)
+            throw std::runtime_error("--build-engine requires positive --tile and --batch values");
+        if (o.benchmark || o.debug)
+            throw std::runtime_error("--build-engine cannot be combined with --benchmark or --debug");
+    }
+    else if (o.input.empty() || o.output.empty() || o.model.empty())
         throw std::runtime_error("Input, output, and model are required");
-    if (!o.inspect.empty() && (!o.input.empty() || !o.output.empty() || !o.model.empty() ||
-                               !o.profile.empty() || o.overwriteEngine || o.benchmark))
-        throw std::runtime_error("--inspect cannot be combined with image processing arguments");
     if (o.scale <= 0 || o.streams <= 0 || o.workspace <= 0 || o.overlap < 0 || o.tile < -1 || o.batch < -1)
         throw std::runtime_error("Invalid numeric argument");
     return o;

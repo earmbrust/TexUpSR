@@ -15,29 +15,30 @@ For apples-to-apples measurements use the same model bytes, image, tile, batch, 
 
 ## Reproducible Windows benchmark
 
-From the repository root, with the runtime dependencies available in `PATH`:
+The commands below use only files tracked in the repository. Configure and build using the checked-in `integration` preset:
 
 ```powershell
-. .\patch\runtime-correction\runtime-env.ps1
-.\scripts\m5-benchmark.ps1
+cmake --preset integration
+cmake --build --preset integration --target trt_sr
 ```
 
-The script executes three cached-engine runs per configuration for Adore FP32 using `samples/busorenkin4.png` (853 x 480), scale 2, batch 1, workspace 2 GiB, overlap 16:
-
-- tile 128, 2 streams
-- tile 256, 2 streams
-- tile 512, 2 streams
-- tile 256, 1 stream
-
-It first performs an engine-preparation run for each configuration if needed, saves the console logs and CSV data under `benchmark-results/m5`, and prints the median upscaling time. The preparation run is **not included** in the repeated-run summary. Runs write their own output file; cached plans remain intact. Building missing engines may take minutes.
-
-To run unit and GPU integration tests, and check for runtime DLL deployment rules, run:
+For Visual Studio multi-configuration builds the application is `build-integration\Release\trt_sr.exe`; for Ninja and other single-configuration builds it is directly in `build-integration`. Set the following PowerShell variables to your actual executable, compatible ONNX model, and input image paths:
 
 ```powershell
-.\scripts\m5-validate.ps1
+$exe = ".\build-integration\Release\trt_sr.exe"
+$model = "C:\path\to\model.onnx"
+$input = "C:\path\to\input.png"
+$output = Join-Path $env:TEMP "texupsr-benchmark-output.png"
+1..4 | ForEach-Object { & $exe -i $input -o $output -m $model --benchmark --scale 2 --tile 256 --batch 1 --workspace 2 --overlap 16 --streams 2 }
 ```
 
-This uses the existing CMake presets and tests, and checks that the project no longer configures POST_BUILD DLL copying. It **does not delete existing DLLs** from old build directories. To prove a pristine output directory contains no third-party DLL copies, build with a separate fresh CMake binary directory using your existing machine's configure settings; do not assume old files were created by the new build.
+The first run prepares or loads the engine; compare the following three cached runs using the median **Upscaling wall time**. For a cold engine, the first run includes build time only in the separate engine-initialization metric. Repeat the run with tile/stream pairs `128/2`, `256/2`, `512/2`, and `256/1` to compare the original M5 configurations, using the same model, input, GPU, and dependency versions. The model and input image used for the recorded results are not supplied by these commands; provide your own compatible files. The old `patch/runtime-correction/runtime-env.ps1`, `scripts/m5-benchmark.ps1`, and `scripts/m5-validate.ps1` were local milestone helpers and are not part of a fresh checkout.
+
+For routine tests, build the `unit` preset and run `ctest --test-dir build-unit -C Release -L unit --output-on-failure`. GPU integration tests run with `ctest --preset integration` after building that preset; they require suitable TensorRT/CUDA installations and hardware.
+
+## Clean Windows runtime deployment verification
+
+After M5, a fresh Release configuration was validated with `cmake --preset integration -B build-dll-verification` and `cmake --build build-dll-verification --config Release --target trt_sr`. The newly built Release directory contained no third-party DLL copies, and the executable ran `--help` with installed runtime dependencies available in the Windows DLL search path. This verifies that Windows environment and build; it is not a claim of verification on every platform. Old build directories may retain DLLs from earlier configurations. TexUpSR deliberately disables vcpkg app-local deployment and does not include third-party runtime DLLs in release archives.
 
 ## Recorded test measurements: RTX 2080 / TensorRT 10.16.1
 
@@ -56,6 +57,8 @@ Configuration: Adore FP32, busorenkin4.png (853 x 480), output 1706 x 960, batch
 | 512 | 2 | 2 | 90.47 | 130.42 | Cached repeat 3 |
 
 Median of the final three cached tile-512 repeats: **93.74 ms**; median output throughput **17.47 million pixels/s**. The three cached repeats varied from 90.47 to 95.70 ms. The single 47.71 ms build-run result is not a valid estimate of warm median performance. The observed 1-versus-2-stream comparison at tile 256 reduced upscaling time by 26.1%, but needs repeated measurements before general conclusions.
+
+A separate automated three-run cached-engine comparison on the same hardware and model recorded median upscaling wall times of **125.51 ms** (tile 128, 2 streams), **118.01 ms** (tile 256, 2 streams), **96.42 ms** (tile 512, 2 streams), and **142.18 ms** (tile 256, 1 stream). These are distinct runs from the individual measurements above, not replacements for them. The helper script and raw local CSV/logs were not committed with M5.
 
 TensorRT reported engine generation of **107.58 s** for tile 128 and **134.575 s** for tile 512; corresponding application-side engine initialization was **110.94 s** and **137.52 s**. These are different timers and should not be interchanged.
 

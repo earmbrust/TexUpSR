@@ -1,5 +1,6 @@
 // Copyright (c) 2025-2026 Elden Armbrust. MIT License.
 #include "Engine.hpp"
+#include "EngineCache.hpp"
 #include "TilePipeline.hpp"
 #include "Upscaler.hpp"
 
@@ -127,6 +128,23 @@ void RunInference(const fs::path& modelPath, const fs::path& cachePath)
         }
     }
 
+    options.buildEngine = true;
+    {
+        Engine generated(options, options.tile, options.batch, logger, ModelProfile{});
+    }
+    Require(fs::exists(cachePath) && fs::file_size(cachePath) > 0, "Pre-generated engine missing or empty");
+    bool alreadyExists = false;
+    try
+    {
+        Engine duplicate(options, options.tile, options.batch, logger, ModelProfile{});
+    }
+    catch (const std::runtime_error&)
+    {
+        alreadyExists = true;
+    }
+    Require(alreadyExists, "Pre-generation silently reused an existing engine");
+    options.buildEngine = false;
+
     for (int pass = 0; pass < 2; ++pass)
     {
         Engine engine(options, options.tile, options.batch, logger, ModelProfile{});
@@ -159,6 +177,25 @@ void RunInference(const fs::path& modelPath, const fs::path& cachePath)
         TilePipeline pipeline(options.tile, options.batch, options.scale, options.overlap, inference);
         VerifyPixels(pipeline.Run(input), input);
         Require(fs::exists(cachePath) && fs::file_size(cachePath) > 0, "Engine cache missing or empty");
+    }
+
+    {
+        const auto beforeDigest = cacheFileDigest(cachePath);
+        Options failure = options;
+        failure.buildEngine = true;
+        failure.overwriteEngine = true;
+        failure.model = (cachePath.parent_path() / "missing-model.onnx").string();
+        bool failedBuild = false;
+        try
+        {
+            Engine invalid(failure, failure.tile, failure.batch, logger, ModelProfile{});
+        }
+        catch (const std::runtime_error&)
+        {
+            failedBuild = true;
+        }
+        Require(failedBuild && cacheFileDigest(cachePath) == beforeDigest,
+                "Failed engine regeneration did not preserve the existing plan");
     }
 
     {

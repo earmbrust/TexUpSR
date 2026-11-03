@@ -45,6 +45,21 @@ int main(int argc, char** argv)
 
         Logger logger;
         logger.verbose = options.verbose;
+        logger.quiet = options.quiet;
+
+        if (options.buildEngine)
+        {
+            if (fs::exists(options.engine) && !options.overwriteEngine)
+                throw std::runtime_error("Engine already exists: " + options.engine +
+                                         " (use --overwrite-engine to replace)");
+            if (static_cast<int64_t>(options.tile) * options.scale > INT_MAX ||
+                static_cast<int64_t>(options.overlap) * 2 >= options.tile)
+                throw std::runtime_error("Invalid engine tile, scale, or overlap combination");
+            TensorElements(options.tile, options.batch, options.scale);
+            const ModelProfile profile = loadModelProfile(options.profile);
+            Engine engine(options, options.tile, options.batch, logger, profile);
+            return 0;
+        }
 
         const cv::Mat image = cv::imread(options.input, cv::IMREAD_COLOR);
         if (image.empty())

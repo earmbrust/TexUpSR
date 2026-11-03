@@ -3,19 +3,20 @@
 TexUpSR is a Windows command-line image upscaler built on NVIDIA TensorRT, CUDA, and OpenCV. It loads compatible ONNX super-resolution models, builds TensorRT engines, and processes images in overlapping tiles.
 
 **Version:** 0.1.0.
-See [docs/ROADMAP.md](docs/ROADMAP.md) for planned model-compatibility and tooling work.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for completed milestones and upcoming work.
 
 ## Model requirements
 
-Current model support requires all of the following:
+Current TensorRT model support requires:
 
-- One RGB input tensor and one RGB output tensor.
-- NCHW tensor layout.
+- One input tensor and one output tensor with three image channels.
+- NCHW or NHWC layout, selected through an optional model profile.
 - FP16 or FP32 input/output tensors.
-- Integer output scale matching `--scale` (default: `4`).
-- An ONNX graph accepted by TensorRT's ONNX parser and engine builder.
+- An integer, isotropic output scale matching `--scale` (default: `4`).
+- Tile and batch dimensions compatible with the model's fixed dimensions or supported dynamic dimensions.
+- An ONNX graph accepted by TensorRT's parser and engine builder.
 
-The model name alone does not establish compatibility. TensorRT conversion, preprocessing assumptions, and output correctness must be verified for each ONNX export. The current preprocessing converts OpenCV BGR pixels to RGB float values in the range 0-1; output is converted back to 8-bit BGR. No model-specific normalization or padding profiles are implemented.
+Without `--profile`, input pixels are converted from BGR to RGB floating-point values in the range 0-1 and output is converted to 8-bit BGR. A JSON profile supports channel order, layout, scale, and offset conversions. General model-specific padding is not implemented. The model name or successful CPU inspection alone does not establish TensorRT or output compatibility; verify the particular ONNX export.
 
 ## Build
 
@@ -28,16 +29,20 @@ Requirements:
 - OpenCV with a CMake package configuration
 - Protobuf C++ library and compiler (protoc)
 
-The repository includes a Visual Studio 2026/vcpkg preset. On Windows PowerShell, set `VCPKG_ROOT`, `TENSORRT_ROOT`, and `CUDA_PATH` to your installed dependencies, then configure and build:
+Use the checked-in CMake presets. The `default` preset builds the application and unit tests; `integration` also enables GPU integration tests; `analysis` uses Ninja; and `unit` builds CPU-only tests without the application. The generator for the non-Ninja presets is selected by your CMake environment.
+
+For a Windows application and GPU integration build:
 
 ```powershell
-cmake --preset windows-vs2026
-cmake --build --preset windows-release
+cmake --preset integration
+cmake --build --preset integration
 ```
 
-You can also configure directly with `-DTensorRT_ROOT=...`, `-DCUDAToolkit_ROOT=...`, and either an OpenCV package path or a vcpkg toolchain. For Visual Studio builds, `trt_sr.exe` is written to the build tree's `Release` directory.
+The executable is under `build-integration/Release` for multi-configuration Visual Studio generators, or directly under `build-integration` for single-configuration generators. The `default` build uses `cmake --preset default` followed by `cmake --build --preset build`.
 
-The project has been built and run on Windows with Visual Studio 2026, CUDA 13.0, TensorRT 10.16.1.11, and OpenCV 4.14.0 via vcpkg.
+On Windows, CMake first honors an explicit toolchain; otherwise it searches standard vcpkg environment settings and a sibling vcpkg checkout. TensorRT discovery honors an explicit `TensorRT_ROOT` and then supported environment hints and sibling installations. CUDA uses CMake's normal toolkit discovery. Ordinary supported setups do not require passing developer-specific `-D` paths on each invocation; explicit dependency overrides remain available.
+
+TexUpSR has been built and run on Windows with Visual Studio 2026, CUDA 13.0, TensorRT 10.16.1.11, and OpenCV 4.14.0 via vcpkg. The Windows build must not copy third-party runtime DLLs next to its executables.
 
 ## Model inspection
 
@@ -80,12 +85,26 @@ reliably establish channel order or normalization, so use an explicit profile.
 ## Usage
 
 ```powershell
-.\build-vcpkg\Release\trt_sr.exe -i input.png -o output.png -m model.onnx --scale 4
+.\build-integration\Release\trt_sr.exe -i input.png -o output.png -m model.onnx --scale 4
 ```
+
+To generate an engine without processing an image, specify a model, an explicit plan path,
+positive tile and batch sizes, and the other required model settings:
+
+```powershell
+.\build-integration\Release\trt_sr.exe --build-engine -m model.onnx -e model.plan -t 256 -b 1 -s 2
+```
+
+This checks TensorRT model requirements and the resulting output shape before saving.
+It refuses an existing engine path unless `--overwrite-engine` is supplied.
+Pre-generation does not use `--input` or `--output`. Use matching model, tile,
+batch, scale, and layout settings when loading the engine for normal upscaling.
 
 | Option | Description | Default |
 | --- | --- | --- |
 | `--inspect` | CPU-only ONNX model inspection | Off |
+| `--build-engine` | Build an explicit TensorRT engine without an image | Off |
+| `--benchmark` | Print CUDA timing, wall time, throughput, and device memory snapshots | Off |
 | `--profile` | JSON pixel/layout profile | Legacy RGB/NCHW conventions |
 | `-i`, `--input` | Input image path | Required for upscaling |
 | `-o`, `--output` | Output image path | Required |
@@ -107,11 +126,15 @@ The application requires an NVIDIA GPU with a supported driver for inference.
 
 ## Tests
 
-CPU-only option parsing tests can be run after building:
+Use the `unit` preset for the CPU-only suite (OpenCV and GoogleTest are still required):
 
 ```powershell
-ctest --test-dir build-vcpkg -C Release --output-on-failure
+cmake --preset unit
+cmake --build --preset unit
+ctest --test-dir build-unit -C Release -L unit --output-on-failure
 ```
+
+For GPU integration testing, build with the `integration` preset and run `ctest --preset integration`. This is separate from ordinary unit testing. See [docs/performance-m5.md](docs/performance-m5.md) for benchmark measurements and commands.
 
 ## Engine cache identity and overwrite
 
@@ -127,10 +150,18 @@ automatic cache or an explicitly selected `--engine` file. If building or
 validation fails, the old plan is preserved. Engine files are written using
 a same-directory temporary file and replacement operation.
 
+Serialized TensorRT engines are not generally portable between GPU architectures,
+TensorRT releases, platforms, or incompatible runtime environments. Generate and
+use an engine on the intended target GPU and TensorRT installation. Model profiles
+control image conversion; pre-generation must use the same tensor layout as
+inference. Incompatible plans may fail to deserialize or execute.
+
 ## Windows runtime requirements
 
 Windows release archives contain `trt_sr.exe`, `README.md`, and `LICENSE` only.
-Third-party runtime DLLs are not bundled. Install compatible x64 versions of
+Third-party runtime DLLs are neither bundled nor copied into application build outputs. The
+CMake build disables vcpkg app-local dependency deployment (`VCPKG_APPLOCAL_DEPS=OFF`).
+Install compatible x64 versions of
 CUDA (13.2 for CI builds), TensorRT (10.16.1.11), OpenCV (4.12 for CI builds),
 Protobuf (shared runtime), and any runtime libraries they require (including
 Abseil when required by the Protobuf build). The Microsoft Visual C++ runtime
