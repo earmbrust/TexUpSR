@@ -33,6 +33,8 @@ Acceptance:
 - Reject ambiguous model requirements unless explicitly configured.
 - Test all supported conversion paths.
 
+Implementation note: the current model profile supports layout, channel order, and pixel scale/offset. General model-specific padding is not implemented; the original M2 scope above is retained for historical accuracy.
+
 ### M3 - Engine cache identity and recovery (completed)
 
 Replace basename-only cache naming with identity derived from model contents, engine build parameters, and relevant GPU/TensorRT compatibility information. Rebuild invalid automatic-cache entries safely and avoid overwriting explicitly supplied engine files without permission.
@@ -53,6 +55,8 @@ Acceptance:
 - Report parse, build, and runtime compatibility separately.
 - For GPU tests, compare output shape, finite values, and image results against known references where available.
 - Do not claim compatibility from architecture names alone.
+
+Implementation note: M4 validates original synthetic CNN-, residual-dense-, and attention-style ONNX graphs against checked-in numeric references. These fixtures do not establish support for trained ESRGAN or transformer exports; see [M4_COMPATIBILITY_FIXTURES.md](M4_COMPATIBILITY_FIXTURES.md).
 
 ### M5 - Performance measurement (completed)
 

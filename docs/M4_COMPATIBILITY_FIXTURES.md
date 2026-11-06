@@ -24,19 +24,26 @@ python tools/generate_m4_fixtures.py
 To inspect all three fixtures without TensorRT GPU execution:
 
 ```powershell
-.\build-vcpkg\Release\trt_sr.exe --inspect .\tests\data\m4\cnn_2x.onnx
-.\build-vcpkg\Release\trt_sr.exe --inspect .\tests\data\m4\rrdb_style_2x.onnx
-.\build-vcpkg\Release\trt_sr.exe --inspect .\tests\data\m4\attention_2x.onnx
+.\build-integration\Release\trt_sr.exe --inspect .\tests\data\m4\cnn_2x.onnx
+.\build-integration\Release\trt_sr.exe --inspect .\tests\data\m4\rrdb_style_2x.onnx
+.\build-integration\Release\trt_sr.exe --inspect .\tests\data\m4\attention_2x.onnx
 ```
 
-Use a controlled 8x8 PNG input for GPU validation. Example for the CNN fixture:
+The GPU integration test checks the three fixtures against tracked `.f32` numeric references without requiring a user-supplied image. On a supported Windows GPU build:
 
 ```powershell
-.\build-vcpkg\Release\trt_sr.exe -i .\samples\m4_input_8x8.png -o .\samples\m4_cnn_result.png -m .\tests\data\m4\cnn_2x.onnx --tile 8 --batch 1 --scale 2 --overlap 0 --streams 1 --verbose
+cmake --preset integration
+cmake --build --preset integration
+ctest --preset integration
 ```
 
+For manual image upscaling, supply your own 8x8 PNG at `samples/m4_input_8x8.png` before running:
+
+```powershell
+.\build-integration\Release\trt_sr.exe -i .\samples\m4_input_8x8.png -o .\samples\m4_cnn_result.png -m .\tests\data\m4\cnn_2x.onnx --tile 8 --batch 1 --scale 2 --overlap 0 --streams 1 --verbose
+```
+
+The example paths above assume a multi-configuration Visual Studio build; for a single-configuration generator, use the executable directly under `build-integration`.
+
 Record ONNX inspection, TensorRT parsing/building, and GPU inference as **separate**
-results, including TensorRT version and GPU. The generation script does not validate
-TensorRT parser/build/runtime compatibility; GPU acceptance remains pending until run on
-supported hardware. For meaningful image reference comparisons, add independent reference
-outputs in a later M4 testing tranche.
+results, including TensorRT version and GPU. The generation script by itself does not validate TensorRT parser, build, or runtime compatibility. `gpu_inference_tests` checks these synthetic fixtures and compares results with checked-in reference tensors when a usable GPU is available; otherwise the integration test can skip. The Windows GPU integration acceptance run passed during M6 validation. This does not establish support for trained CNN, ESRGAN, or transformer exports.
