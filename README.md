@@ -3,7 +3,7 @@
 TexUpSR is a Windows command-line image upscaler built on NVIDIA TensorRT, CUDA, and OpenCV. It loads compatible ONNX super-resolution models, builds TensorRT engines, and processes images in overlapping tiles.
 
 **Version:** 0.1.0.
-See [docs/ROADMAP.md](docs/ROADMAP.md) for completed milestones and upcoming work.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for completed work and planned changes.
 
 ## Model requirements
 
@@ -134,7 +134,7 @@ cmake --build --preset unit
 ctest --test-dir build-unit -C Release -L unit --output-on-failure
 ```
 
-For GPU integration testing, build with the `integration` preset and run `ctest --preset integration`. This is separate from ordinary unit testing. See [docs/performance-m5.md](docs/performance-m5.md) for benchmark measurements and commands.
+For GPU integration testing, build with the `integration` preset and run `ctest --preset integration`. This is separate from ordinary unit testing. See [docs/performance.md](docs/performance.md) for benchmark measurements and commands.
 
 ## Engine cache identity and overwrite
 
