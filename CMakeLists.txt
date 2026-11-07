@@ -216,7 +216,7 @@ if(TEXUPSR_BUILD_GPU_TESTS)
     ${OpenCV_LIBS} CUDA::cudart "${TENSORRT_INFER}" "${TENSORRT_PARSER}")
   target_compile_definitions(gpu_inference_tests PRIVATE
     TEXUPSR_GPU_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/relu.onnx"
-    TEXUPSR_M4_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/m4")
+    TEXUPSR_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/fixtures")
   add_test(NAME gpu_inference COMMAND gpu_inference_tests)
   set_tests_properties(gpu_inference PROPERTIES SKIP_RETURN_CODE 77 LABELS integration)
 endif()

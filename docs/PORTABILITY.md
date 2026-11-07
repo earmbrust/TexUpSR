@@ -27,7 +27,7 @@ The main CI workflow runs three independent checks (Cppcheck, SDK-backed clang-t
 - Windows x64: Visual Studio 2026 with C++17, C++20, and C++23.
 - Linux x64: GCC and Clang, each with C++17, C++20, and C++23, using the NVIDIA TensorRT development image.
 
-Each platform job builds the application, runs its configured tests, and checks the command-line entry point. These jobs do not publish releases. The nine platform jobs and three pre-build checks passed for M6; the PR #16 closeout also passed its CodeQL checks. The workflows remain the source of truth for the current matrix.
+Each platform job builds the application, runs its configured tests, and checks the command-line entry point. These jobs do not publish releases. The nine platform jobs and three pre-build checks passed during engine pre-generation validation; the PR #16 closeout also passed its CodeQL checks. The workflows remain the source of truth for the current matrix.
 
 Successful CI builds and command-line smoke tests do not establish working GPU inference. Hardware-backed inference validation requires a compatible NVIDIA GPU and driver. Linux ARM64, Jetson, Windows Clang, and GPU-backed Linux inference remain outside the current CI compatibility matrix.
 

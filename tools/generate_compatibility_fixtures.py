@@ -135,7 +135,7 @@ def make_attention():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output-dir', default='tests/data/m4')
+    parser.add_argument('--output-dir', default='tests/data/fixtures')
     args = parser.parse_args()
     directory = pathlib.Path(args.output_dir)
     directory.mkdir(parents=True, exist_ok=True)

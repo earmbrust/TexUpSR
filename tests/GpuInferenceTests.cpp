@@ -214,7 +214,7 @@ void RunInference(const fs::path& modelPath, const fs::path& cachePath)
     Require(rejected, "Corrupt engine cache was accepted");
 }
 
-void RunM4Reference(const fs::path& fixtureDirectory, const fs::path& directory, const std::string& name)
+void RunFixtureReference(const fs::path& fixtureDirectory, const fs::path& directory, const std::string& name)
 {
     Options options;
     options.model = (fixtureDirectory / (name + ".onnx")).string();
@@ -282,7 +282,7 @@ void RunM4Reference(const fs::path& fixtureDirectory, const fs::path& directory,
             }
         }
     }
-    std::cout << "M4 " << name << " reference PASS; maximum absolute difference "
+    std::cout << name << " reference PASS; maximum absolute difference "
               << maxDifference << '\n';
 }
 
@@ -308,10 +308,10 @@ int main()
         {
             fs::remove(cachePath);
             RunInference(modelPath, cachePath);
-            const fs::path m4Fixtures(TEXUPSR_M4_FIXTURE_DIR);
-            RunM4Reference(m4Fixtures, directory, "cnn_2x");
-            RunM4Reference(m4Fixtures, directory, "rrdb_style_2x");
-            RunM4Reference(m4Fixtures, directory, "attention_2x");
+            const fs::path m4Fixtures(TEXUPSR_FIXTURE_DIR);
+            RunFixtureReference(m4Fixtures, directory, "cnn_2x");
+            RunFixtureReference(m4Fixtures, directory, "rrdb_style_2x");
+            RunFixtureReference(m4Fixtures, directory, "attention_2x");
             fs::remove_all(directory);
         }
         catch (...)
