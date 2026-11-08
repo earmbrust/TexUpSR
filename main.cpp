@@ -1,100 +1,209 @@
 // Copyright (c) 2025-2026 Elden Armbrust. MIT License.
-#include "Options.hpp"
 #include "Engine.hpp"
+#include "ModelInspection.hpp"
+#include "Options.hpp"
+#include "Sizing.hpp"
+#include "TensorSizes.hpp"
+#include "TilePipeline.hpp"
 #include "Upscaler.hpp"
-#include "ImageTiles.hpp"
-#include <opencv2/opencv.hpp>
+
 #include <cuda_runtime_api.h>
-#include <algorithm>
+#include <opencv2/opencv.hpp>
+
+#include <filesystem>
+#include <chrono>
+#include <iomanip>
 #include <cstdint>
 #include <climits>
-#include <deque>
-#include <filesystem>
-#include <future>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
-#include <string>
 #include <vector>
-#include <utility>
+
 namespace fs = std::filesystem;
 
-int main(int argc, char** argv) {
-    try {
-        Options o = parse(argc, argv);
-        Logger logger; logger.verbose = o.verbose;
-        cv::Mat image = cv::imread(o.input, cv::IMREAD_COLOR);
-        if (image.empty()) throw std::runtime_error("Cannot load input image");
-        size_t freeBytes = 0, totalBytes = 0;
+int main(int argc, char** argv)
+{
+    try
+    {
+        const auto applicationStart = std::chrono::steady_clock::now();
+        const Options options = parse(argc, argv);
+        if (!options.inspect.empty())
+        {
+            inspectModel(options.inspect, std::cout);
+            if (!options.engine.empty())
+            {
+                const fs::path enginePath(options.engine);
+                if (!fs::is_regular_file(enginePath))
+                    throw std::runtime_error("Engine file not found: " + options.engine);
+                std::cout << "Engine file: " << options.engine << " (" << fs::file_size(enginePath)
+                          << " bytes)\n";
+                std::cout << "Engine contents: not inspected without CUDA deserialization\n";
+            }
+            return 0;
+        }
+
+        Logger logger;
+        logger.verbose = options.verbose;
+        logger.quiet = options.quiet;
+
+        if (options.buildEngine)
+        {
+            if (fs::exists(options.engine) && !options.overwriteEngine)
+                throw std::runtime_error("Engine already exists: " + options.engine +
+                                         " (use --overwrite-engine to replace)");
+            if (static_cast<int64_t>(options.tile) * options.scale > INT_MAX ||
+                static_cast<int64_t>(options.overlap) * 2 >= options.tile)
+                throw std::runtime_error("Invalid engine tile, scale, or overlap combination");
+            TensorElements(options.tile, options.batch, options.scale);
+            const ModelProfile profile = loadModelProfile(options.profile);
+            Engine engine(options, options.tile, options.batch, logger, profile);
+            return 0;
+        }
+
+        const cv::Mat image = cv::imread(options.input, cv::IMREAD_COLOR);
+        if (image.empty())
+        {
+            throw std::runtime_error("Cannot load input image");
+        }
+
+        size_t freeBytes = 0;
+        size_t totalBytes = 0;
         cudaCheck(cudaMemGetInfo(&freeBytes, &totalBytes), "cudaMemGetInfo");
-        const int tile = o.tile > 0 ? o.tile : autoTile(freeBytes, o.streams, o.overlap);
-        const int batch = o.batch > 0 ? o.batch : autoBatch(freeBytes, tile, o.scale, o.streams, o.workspace);
-        if (tile <= 2 * o.overlap || tile <= 0 || batch <= 0) throw std::runtime_error("Invalid tile/overlap/batch combination");
-        if (static_cast<int64_t>(image.cols) * o.scale > INT_MAX ||
-            static_cast<int64_t>(image.rows) * o.scale > INT_MAX ||
-            static_cast<int64_t>(tile) * o.scale > INT_MAX)
+
+        const int tile =
+            options.tile > 0 ? options.tile : autoTile(freeBytes, options.streams, options.overlap);
+        const int batch = options.batch > 0
+                              ? options.batch
+                              : autoBatch(freeBytes, tile, options.scale, options.streams, options.workspace);
+
+        if (!options.quiet)
+        {
+            std::cout << "Tile " << tile << ", batch " << batch << ", streams " << options.streams << '\n';
+        }
+
+        if (tile <= 0 || batch <= 0 || static_cast<int64_t>(options.overlap) * 2 >= tile)
+        {
+            throw std::runtime_error("Invalid tile/overlap/batch combination");
+        }
+
+        if (static_cast<int64_t>(image.cols) * options.scale > INT_MAX ||
+            static_cast<int64_t>(image.rows) * options.scale > INT_MAX ||
+            static_cast<int64_t>(tile) * options.scale > INT_MAX)
+        {
             throw std::runtime_error("Upscaled dimensions overflow int");
-        if (!o.quiet) std::cout << "Tile " << tile << ", batch " << batch << ", streams " << o.streams << "\n";
-        EngineState state = loadEngine(o, tile, batch, logger);
-        auto& engine = state.engine;
-        const auto& inName = state.inName;
-        const auto& outName = state.outName;
-        const auto inType = state.inType;
-        const auto outType = state.outType;
-        const size_t inCount = static_cast<size_t>(batch) * 3 * tile * tile;
-        const size_t outCount = inCount * static_cast<size_t>(o.scale) * o.scale;
+        }
+
+        const ModelProfile profile = loadModelProfile(options.profile);
+        const auto engineStart = std::chrono::steady_clock::now();
+        Engine engine(options, tile, batch, logger, profile);
+        const auto engineEnd = std::chrono::steady_clock::now();
+        const auto tensors = TensorElements(tile, batch, options.scale);
+        const size_t inputCount = tensors.input;
+        const size_t outputCount = tensors.output;
+
         std::vector<std::unique_ptr<Worker>> workers;
-        for (int i = 0; i < o.streams; ++i)
-            workers.emplace_back(std::make_unique<Worker>(*engine, inCount, outCount, inType, outType));
-        const int width = image.cols * o.scale, height = image.rows * o.scale;
-        cv::Mat accum(height, width, CV_32FC3, cv::Scalar(0, 0, 0));
-        cv::Mat weights(height, width, CV_32FC1, cv::Scalar(0));
-        const int stride = tile - 2 * o.overlap;
-        std::vector<Tile> all;
-        for (int y = 0; y < image.rows; y += stride)
-            for (int x = 0; x < image.cols; x += stride) all.push_back({x, y});
-        std::deque<std::future<BatchResult>> jobs;
+        std::vector<Inference*> inference;
+        workers.reserve(options.streams);
+        inference.reserve(options.streams);
+
+        for (int i = 0; i < options.streams; ++i)
+        {
+            workers.emplace_back(
+                std::make_unique<Worker>(engine.Get(), inputCount, outputCount, engine.InputType(),
+                                         engine.OutputType(), engine.InputName(), engine.OutputName(), tile,
+                                         batch, options.scale, options.overlap, profile, options.benchmark));
+            inference.push_back(workers.back().get());
+        }
+
+        TilePipeline pipeline(tile, batch, options.scale, options.overlap, inference);
         bool debugSaved = false;
-        size_t done = 0;
-        auto consume = [&](std::future<BatchResult>& f) {
-            BatchResult result = f.get();
-            for (size_t j = 0; j < result.tiles.size(); ++j) {
-                if (o.debug && !debugSaved) {
-                    cv::Mat tmp; result.images[j].convertTo(tmp, CV_8UC3, 255.0);
-                    if (!cv::imwrite("debug_first_tile.png", tmp)) throw std::runtime_error("Cannot save debug tile");
-                    debugSaved = true;
-                }
-                blendTile(accum, weights, result.images[j], result.tiles[j], tile, o.scale,
-                          o.overlap, image.cols, image.rows);
-                ++done;
-            }
-            if (!o.quiet) std::cout << "Processed " << done << "/" << all.size() << " tiles\r" << std::flush;
-        };
-        // Each worker owns an independent TensorRT execution context, CUDA stream,
-        // persistent device buffers and page-locked staging buffers.
-        size_t group = 0;
-        for (size_t start = 0; start < all.size(); start += static_cast<size_t>(batch), ++group) {
-            const size_t end = std::min(start + static_cast<size_t>(batch), all.size());
-            if (jobs.size() == workers.size()) { consume(jobs.front()); jobs.pop_front(); }
-            std::vector<Tile> tiles(all.begin() + start, all.begin() + end);
-            Worker* worker = workers[group % workers.size()].get();
-            jobs.push_back(std::async(std::launch::async, [worker, &image, tiles = std::move(tiles), tile, batch, &o, &inName, &outName, inType, outType]() {
-                return runBatch(*worker, image, tiles, tile, batch, o.scale, o.overlap, inName, outName, inType, outType);
-            }));
+
+        const auto upscaleStart = std::chrono::steady_clock::now();
+        const cv::Mat result = pipeline.Run(image,
+                                            [&](const BatchResult& completed, size_t processed, size_t total)
+                                            {
+                                                if (options.debug && !debugSaved && !completed.images.empty())
+                                                {
+                                                    cv::Mat debug;
+                                                    completed.images.front().convertTo(debug, CV_8UC3, 255.0);
+                                                    if (!cv::imwrite("debug_first_tile.png", debug))
+                                                    {
+                                                        throw std::runtime_error("Cannot save debug tile");
+                                                    }
+                                                    debugSaved = true;
+                                                }
+
+                                                if (!options.quiet)
+                                                {
+                                                    std::cout << "Processed " << processed << "/" << total
+                                                              << " tiles\r" << std::flush;
+                                                }
+                                            });
+        const auto upscaleEnd = std::chrono::steady_clock::now();
+
+        cv::Mat output;
+        result.convertTo(output, CV_8UC3, 255.0);
+        const fs::path path(options.output);
+        if (path.has_parent_path())
+        {
+            fs::create_directories(path.parent_path());
         }
-        while (!jobs.empty()) { consume(jobs.front()); jobs.pop_front(); }
-        for (int y = 0; y < height; ++y) {
-            auto* row = accum.ptr<cv::Vec3f>(y);
-            const auto* w = weights.ptr<float>(y);
-            for (int x = 0; x < width; ++x) {
-                if (w[x] <= 0.f) throw std::runtime_error("Uncovered output pixel during tile blending");
-                row[x] /= w[x];
-            }
+        if (!cv::imwrite(options.output, output))
+        {
+            throw std::runtime_error("Could not write output image");
         }
-        cv::Mat output; accum.convertTo(output, CV_8UC3, 255.0);
-        if (fs::path(o.output).has_parent_path()) fs::create_directories(fs::path(o.output).parent_path());
-        if (!cv::imwrite(o.output, output)) throw std::runtime_error("Could not write output image");
-        if (!o.quiet) std::cout << "\nWrote " << o.output << '\n';
+        if (!options.quiet)
+        {
+            std::cout << "\nWrote " << options.output << '\n';
+        }
+        if (options.benchmark)
+        {
+            const auto totalEnd = std::chrono::steady_clock::now();
+            const auto elapsed = [](auto start, auto end) -> double
+            { return std::chrono::duration<double, std::micro>(end - start).count(); };
+            double inferenceUs = 0.0;
+            size_t inferenceBatches = 0;
+            for (const auto& worker : workers)
+            {
+                inferenceUs += worker->InferenceMicroseconds();
+                inferenceBatches += worker->InferenceBatches();
+            }
+            int device = 0;
+            cudaCheck(cudaGetDevice(&device), "cudaGetDevice benchmark");
+            cudaDeviceProp gpu{};
+            cudaCheck(cudaGetDeviceProperties(&gpu, device), "cudaGetDeviceProperties benchmark");
+            int driver = 0;
+            cudaCheck(cudaDriverGetVersion(&driver), "cudaDriverGetVersion benchmark");
+            size_t freeAfter = 0;
+            size_t totalAfter = 0;
+            cudaCheck(cudaMemGetInfo(&freeAfter, &totalAfter), "cudaMemGetInfo benchmark");
+            const double upscaleUs = elapsed(upscaleStart, upscaleEnd);
+            const double totalUs = elapsed(applicationStart, totalEnd);
+            std::cout << std::fixed << std::setprecision(2) << "\nBenchmark (microseconds):\n"
+                      << "  Inference CUDA event sum: " << inferenceUs << " (" << inferenceBatches
+                      << " batches across " << options.streams << " streams)\n"
+                      << "  Upscaling wall time: " << upscaleUs << "\n"
+                      << "  Engine initialization: " << elapsed(engineStart, engineEnd) << "\n"
+                      << "  Total application: " << totalUs << "\n"
+                      << "  Output pixels/second (upscaling): "
+                      << (upscaleUs > 0 ? static_cast<double>(output.total()) * 1000000.0 / upscaleUs : 0.0)
+                      << "\n  GPU: " << gpu.name << " (compute " << gpu.major << '.' << gpu.minor
+                      << ", CUDA driver " << driver << ")\n"
+                      << "  TensorRT: " << NV_TENSORRT_MAJOR << '.' << NV_TENSORRT_MINOR << '.'
+                      << NV_TENSORRT_PATCH << "\n"
+                      << "  Model: " << options.model << "\n"
+                      << "  Input: " << options.input << " (" << image.cols << 'x' << image.rows << ")\n"
+                      << "  Tile/batch/streams/overlap: " << tile << '/' << batch << '/' << options.streams
+                      << '/' << options.overlap << "\n"
+                      << "  Device memory used before/after (bytes): " << (totalBytes - freeBytes) << '/'
+                      << (totalAfter - freeAfter) << " (not peak VRAM)\n";
+        }
         return 0;
-    } catch (const std::exception& e) { std::cerr << "Error: " << e.what() << '\n'; return 1; }
+    }
+    catch (const std::exception& error)
+    {
+        std::cerr << "Error: " << error.what() << '\n';
+        return 1;
+    }
 }
