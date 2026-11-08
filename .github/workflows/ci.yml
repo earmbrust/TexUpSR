@@ -226,7 +226,7 @@ jobs:
           }
       - name: Install CUDA 13.2
         if: steps.cuda-cache.outputs.cache-hit != 'true'
-        uses: Jimver/cuda-toolkit@v0.2.36
+        uses: Jimver/cuda-toolkit@b8bf9c6c28f8a92fbb04dcfcaee872e60c57462d # v0.2.36
         with:
           cuda: '13.2.0'
           method: network
