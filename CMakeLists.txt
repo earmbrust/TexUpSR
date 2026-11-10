@@ -28,7 +28,7 @@ if(CMAKE_HOST_WIN32 AND NOT CMAKE_TOOLCHAIN_FILE)
   unset(_texupsr_vcpkg_root)
 endif()
 
-project(trt_sr_upscaler VERSION 0.1.0 LANGUAGES CXX)
+project(trt_sr_upscaler VERSION 0.2.0 LANGUAGES CXX)
 include(cmake/CppStandards.cmake)
 
 option(TEXUPSR_BUILD_APP "Build the TensorRT upscaler" ON)
@@ -136,6 +136,7 @@ if(TEXUPSR_BUILD_APP)
     src/ImageTiles.cpp
     src/ModelProfile.cpp
     src/TilePipeline.cpp
+    src/LocalTransport.cpp
   )
   target_include_directories(trt_sr PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_include_directories(trt_sr PRIVATE "${TENSORRT_INCLUDE}" ${OpenCV_INCLUDE_DIRS})
@@ -157,6 +158,11 @@ if(BUILD_TESTING)
   target_include_directories(options_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_link_libraries(options_tests PRIVATE GTest::gtest_main)
   gtest_discover_tests(options_tests DISCOVERY_TIMEOUT 30 DISCOVERY_MODE PRE_TEST PROPERTIES LABELS unit)
+
+  add_executable(local_transport_tests tests/LocalTransportTests.cpp src/LocalTransport.cpp)
+  target_include_directories(local_transport_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  target_link_libraries(local_transport_tests PRIVATE GTest::gtest_main)
+  gtest_discover_tests(local_transport_tests DISCOVERY_TIMEOUT 30 DISCOVERY_MODE PRE_TEST PROPERTIES LABELS unit)
   add_executable(model_profile_tests tests/ModelProfileTests.cpp src/ImageTiles.cpp src/ModelProfile.cpp)
   target_include_directories(model_profile_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" ${OpenCV_INCLUDE_DIRS})
   target_link_libraries(model_profile_tests PRIVATE ${OpenCV_LIBS} GTest::gtest_main)

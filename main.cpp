@@ -1,5 +1,6 @@
 // Copyright (c) 2025-2026 Elden Armbrust. MIT License.
 #include "Engine.hpp"
+#include "LocalTransport.hpp"
 #include "ModelInspection.hpp"
 #include "Options.hpp"
 #include "Sizing.hpp"
@@ -17,8 +18,14 @@
 #include <climits>
 #include <iostream>
 #include <memory>
+#include <limits>
 #include <stdexcept>
 #include <vector>
+#ifdef _WIN32
+#include <cstdio>
+#include <fcntl.h>
+#include <io.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -61,11 +68,28 @@ int main(int argc, char** argv)
             return 0;
         }
 
-        const cv::Mat image = cv::imread(options.input, cv::IMREAD_COLOR);
-        if (image.empty())
+        cv::Mat image;
+        if (options.stream)
         {
-            throw std::runtime_error("Cannot load input image");
+            const uint64_t width = static_cast<uint64_t>(options.width) * options.scale;
+            const uint64_t height = static_cast<uint64_t>(options.height) * options.scale;
+            if (width > INT_MAX || height > INT_MAX)
+                throw std::runtime_error("Upscaled frame dimensions overflow int");
+            const uint64_t inputBytes = static_cast<uint64_t>(options.width) * options.height * 3;
+            const uint64_t outputBytes = width * height * 3;
+            const auto limit = static_cast<uint64_t>(std::numeric_limits<std::streamsize>::max());
+            if (inputBytes > limit || outputBytes > limit ||
+                inputBytes > std::numeric_limits<size_t>::max() ||
+                outputBytes > std::numeric_limits<size_t>::max())
+                throw std::runtime_error("Frame byte count is too large");
+            image.create(options.height, options.width, CV_8UC3);
         }
+        else
+        {
+            image = cv::imread(options.input, cv::IMREAD_COLOR);
+        }
+        if (image.empty())
+            throw std::runtime_error("Cannot load or allocate input image");
 
         size_t freeBytes = 0;
         size_t totalBytes = 0;
@@ -79,7 +103,8 @@ int main(int argc, char** argv)
 
         if (!options.quiet)
         {
-            std::cout << "Tile " << tile << ", batch " << batch << ", streams " << options.streams << '\n';
+            std::ostream& messages = options.stream ? std::cerr : std::cout;
+            messages << "Tile " << tile << ", batch " << batch << ", streams " << options.streams << '\n';
         }
 
         if (tile <= 0 || batch <= 0 || static_cast<int64_t>(options.overlap) * 2 >= tile)
@@ -117,6 +142,34 @@ int main(int argc, char** argv)
         }
 
         TilePipeline pipeline(tile, batch, options.scale, options.overlap, inference);
+        if (options.stream)
+        {
+            const auto mode = !options.pipeName.empty() ? LocalTransport::Mode::Pipe :
+                              !options.sharedMemoryName.empty() ? LocalTransport::Mode::SharedMemory :
+                                                                  LocalTransport::Mode::Stdio;
+            const std::string& name = !options.pipeName.empty() ? options.pipeName : options.sharedMemoryName;
+            LocalTransport transport(mode, name, options.width, options.height, options.scale);
+            const auto inputBytes = image.total() * image.elemSize();
+            const auto outputBytes = static_cast<size_t>(options.width * options.scale) *
+                                     static_cast<size_t>(options.height * options.scale) * 3;
+            try
+            {
+                while (transport.ReadFrame(image.data, inputBytes))
+                {
+                    cv::Mat output;
+                    pipeline.Run(image).convertTo(output, CV_8UC3, 255.0);
+                    if (!output.isContinuous() || output.total() * output.elemSize() != outputBytes)
+                        throw std::runtime_error("Invalid BGR24 output frame");
+                    transport.WriteFrame(output.data, outputBytes);
+                }
+            }
+            catch (...)
+            {
+                transport.Fail();
+                throw;
+            }
+            return 0;
+        }
         bool debugSaved = false;
 
         const auto upscaleStart = std::chrono::steady_clock::now();

@@ -20,6 +20,28 @@ ctest --test-dir build-linux -L unit --output-on-failure
 
 `-DTensorRT_ROOT=/path/to/sdk` can be used with a custom TensorRT installation. Otherwise CMake searches system paths, including multiarch directories. On Windows, choose any compatible generator and compiler. Select the standard with `-DTEXUP_CXX_STANDARD=17`, `20`, or `23`.
 
+## Local worker transport portability
+
+The stdio worker accepts and returns raw BGR24 bytes through process streams
+on both Windows and POSIX systems. On Windows, `--pipe` uses a pair of
+Windows named pipes under `\\.\pipe\TexUpSR-<name>-*`; on Linux, it uses
+owner-only FIFOs under `/tmp/texupsr-<name>-*`. The producer connects the
+input endpoint first and then the output endpoint. Both endpoints are local;
+there is no TCP listener.
+
+The `--shared-memory` mode uses Windows named file mappings with request and
+response events, or POSIX shared-memory objects with named semaphores. It
+exchanges one fixed-size BGR24 frame at a time. See the [README](../README.md)
+for the header layout, state transitions, endpoint names, and shutdown
+sequence. The shared-memory header is native-endian; the supported Windows
+and Linux x64 platforms are little-endian. These modes require the host
+application and worker to run on the same machine.
+
+Local transport tests have passed on Windows and isolated Linux C++17 builds.
+The 0.2.0 Windows GPU worker validation passed for named pipes and shared
+memory. Complete Linux application and GPU validation for 0.2.0 is still
+subject to release CI; transport tests alone do not establish that result.
+
 ## CI verification
 
 The main CI workflow runs three independent checks (Cppcheck, SDK-backed clang-tidy, and SDK-independent CMake configuration) alongside nine platform configurations:

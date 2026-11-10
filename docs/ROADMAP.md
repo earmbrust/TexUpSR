@@ -2,7 +2,10 @@
 
 TexUpSR is a TensorRT-based image upscaler. ONNX is its model input format. Additional inference runtimes are not planned.
 
-The work described below is implemented and merged. Its original scope and acceptance criteria are retained as a record. No release dates are assigned.
+The completed milestones below record the 0.1.0 work and their original
+acceptance criteria. Version 0.2.0 adds local worker transports; their
+release qualification includes Windows and Linux validation. No release
+date is assigned.
 
 ## Current baseline - 0.1.0
 
@@ -10,6 +13,28 @@ The work described below is implemented and merged. Its original scope and accep
 - Three-channel NCHW or NHWC tensors, FP16 or FP32, with an integer scale and optional JSON pixel/layout profile.
 - Tiled image processing with overlap blending, CUDA streams, and serialized TensorRT engine reuse.
 - Windows AMD64 builds with Visual Studio 2026. The planned consumer release targets Windows 11; runtime compatibility requires validation on Windows 11.
+
+## Local worker support - 0.2.0
+
+- Preserve the standalone CLI image-upscaling path as the simplest default.
+- Accept fixed-size BGR24 frames through stdio, local named pipes/FIFOs, or
+  shared memory, using the same TensorRT pipeline and cached engine.
+- Keep local transport and application integration independent of future
+  multi-GPU scheduling or network-distributed processing.
+- Allow external applications to handle their own video frames, editor layers,
+  frame ordering, decoding, and encoding.
+
+Windows x64 local worker validation: 55 unit tests passed; named pipes and
+shared memory each returned two complete frames byte-for-byte identical to
+the previously validated stdio output with the 4x Nomos2 model. The isolated
+local transport code also passed Linux C++17 tests. Full Linux application
+builds and GPU inference need independent verification; Windows tests alone
+do not establish Linux runtime correctness.
+
+Future expansion (not part of 0.2.0): local multi-GPU scheduling and optional
+network-connected remote workers, coordinated at tile level with authoritative
+recombination in the main instance. Network support must not be required for
+standalone upscaling or local application integration.
 
 ## Completed work
 
@@ -56,7 +81,7 @@ Acceptance:
 - For GPU tests, compare output shape, finite values, and image results against known references where available.
 - Do not claim compatibility from architecture names alone.
 
-Implementation note: The compatibility suite validates original synthetic CNN-, residual-dense-, and attention-style ONNX graphs against checked-in numeric references. These fixtures do not establish support for trained ESRGAN or transformer exports; see [compatibility-fixtures.md](compatibility-fixtures.md).
+Implementation note: The compatibility suite validates original synthetic CNN-, residual-dense-, and attention-style ONNX graphs against checked-in numeric references. These fixtures do not establish support for trained ESRGAN or transformer exports; see [COMPATIBILITY-FIXTURES.md](COMPATIBILITY-FIXTURES.md).
 
 ### Performance measurement (completed)
 
@@ -78,7 +103,7 @@ summed across workers (not wall-clock elapsed time during concurrent streams), u
 wall time, complete application time and selected run metadata. A single run is not
 a warm-inference distribution or a measurement of peak VRAM. Reproducible runs
 should pin model, input, tile, batch, streams, overlap, workspace and driver.
-See [performance.md](performance.md) for recorded results, measurement limits, and reproducible commands.
+See [PERFORMANCE.md](PERFORMANCE.md) for recorded results, measurement limits, and reproducible commands.
 
 ### Command-line engine pre-generation (completed)
 

@@ -165,6 +165,7 @@ std::vector<char> Engine::Build(const Options& options, int tile, int batch, Log
 
 Engine::Engine(const Options& options, int tile, int batch, Logger& logger, const ModelProfile& profile)
 {
+    std::ostream& messages = options.stream ? std::cerr : std::cout;
     // An engine plan is specific to the ONNX content, build settings, TensorRT, and GPU.
     int device = 0;
     if (cudaGetDevice(&device) != cudaSuccess)
@@ -204,7 +205,7 @@ Engine::Engine(const Options& options, int tile, int batch, Logger& logger, cons
     if (!rebuild)
     {
         if (!options.quiet)
-            std::cout << "Loading TensorRT engine: " << path.string() << '\n';
+            messages << "Loading TensorRT engine: " << path.string() << '\n';
         try
         {
             if (!deserialize(Read(path)))
@@ -227,7 +228,7 @@ Engine::Engine(const Options& options, int tile, int batch, Logger& logger, cons
     if (rebuild)
     {
         if (!options.quiet)
-            std::cout << "Building TensorRT engine: " << path.string() << std::endl;
+            messages << "Building TensorRT engine: " << path.string() << std::endl;
         logger.building = !options.quiet;
         try
         {
@@ -283,15 +284,15 @@ Engine::Engine(const Options& options, int tile, int batch, Logger& logger, cons
     {
         Write(path, pendingBytes);
         if (!options.quiet)
-            std::cout << "TensorRT engine saved: " << path.string() << '\n';
+            messages << "TensorRT engine saved: " << path.string() << '\n';
     }
     else if (!options.quiet)
     {
-        std::cout << "TensorRT engine loaded.\n";
+        messages << "TensorRT engine loaded.\n";
     }
     if (options.verbose && !options.quiet)
     {
-        std::cout << "Tensor formats: input " << (inputType_ == nvinfer1::DataType::kHALF ? "FP16" : "FP32")
+        messages << "Tensor formats: input " << (inputType_ == nvinfer1::DataType::kHALF ? "FP16" : "FP32")
                   << ", output " << (outputType_ == nvinfer1::DataType::kHALF ? "FP16" : "FP32") << '\n';
     }
 }
