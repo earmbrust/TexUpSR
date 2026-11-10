@@ -1,5 +1,5 @@
 #ifndef AppVersion
-#define AppVersion "0.1.0"
+#error AppVersion must be supplied by the build workflow or local installer build
 #endif
 #ifndef SourceDir
 #error SourceDir must be provided by the build workflow
