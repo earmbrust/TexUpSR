@@ -63,8 +63,9 @@ TEST(Options, defaults)
     require(opts.scale == 4 && opts.streams == 2 && opts.overlap == 16, "Integer defaults");
     require(opts.workspace == 4.0, "Workspace default");
     require(!opts.verbose && !opts.quiet && !opts.debug && !opts.overwriteEngine && !opts.benchmark &&
-                !opts.buildEngine,
+                !opts.buildEngine && !opts.stream,
             "Boolean defaults");
+    require(opts.width == 0 && opts.height == 0 && opts.format.empty(), "Streaming defaults");
 }
 
 TEST(Options, allOptions)
@@ -176,4 +177,67 @@ TEST(Options, enginePreGeneration)
         "Debug tile");
     rejects({"trt_sr", "--build-engine", "--inspect", "model.onnx"}, "Conflicting operations");
 }
+TEST(Options, streamMode)
+{
+    const auto options = parseArgs({"trt_sr", "--stream", "--width", "720", "--height", "480",
+                                    "--format", "bgr24", "--scale", "2", "--model", "model.onnx",
+                                    "--engine", "model.plan", "--profile", "profile.json", "-q"});
+    require(options.stream && options.width == 720 && options.height == 480 &&
+                options.format == "bgr24" && options.scale == 2, "Streaming configuration");
+    require(options.model == "model.onnx" && options.engine == "model.plan" &&
+                options.profile == "profile.json" && options.quiet, "Streaming engine configuration");
+    require(options.input.empty() && options.output.empty(), "Streaming does not use image paths");
+
+    const Args start = {"trt_sr", "--stream", "--width", "720", "--height", "480",
+                        "--format", "bgr24", "-m", "model.onnx"};
+    for (const auto& argument : {"--debug", "--benchmark", "--build-engine"})
+    {
+        auto args = start;
+        args.push_back(argument);
+        rejects(args, argument);
+    }
+    for (const auto& extra : {Args{"-i", "image.png"}, Args{"-o", "image.png"},
+                              Args{"--inspect", "model.onnx"}})
+    {
+        auto args = start;
+        args.insert(args.end(), extra.begin(), extra.end());
+        rejects(args, "Conflicting streaming mode");
+    }
+    rejects({"trt_sr", "--stream", "--width", "720", "--height", "480", "-m", "model.onnx"},
+            "Missing format");
+    rejects({"trt_sr", "--stream", "--height", "480", "--format", "bgr24", "-m", "model.onnx"},
+            "Missing width");
+    rejects({"trt_sr", "--stream", "--width", "720", "--format", "bgr24", "-m", "model.onnx"},
+            "Missing height");
+    rejects({"trt_sr", "--stream", "--width", "720", "--height", "480", "--format", "rgb24",
+             "-m", "model.onnx"}, "Unsupported pixel format");
+    rejects({"trt_sr", "--stream", "--width", "0", "--height", "480", "--format", "bgr24",
+             "-m", "model.onnx"}, "Zero width");
+    rejects({"trt_sr", "--stream", "--width", "720", "--height", "-1", "--format", "bgr24",
+             "-m", "model.onnx"}, "Negative height");
+    rejects({"trt_sr", "--width", "720", "-i", "a", "-o", "b", "-m", "c"},
+            "Stream dimension in image mode");
+    rejects({"trt_sr", "--format", "bgr24", "-i", "a", "-o", "b", "-m", "c"},
+            "Stream format in image mode");
+}
+
+TEST(Options, localWorkerModes)
+{
+    const auto pipe = parseArgs({"trt_sr", "--pipe", "test_01", "--width", "128", "--height", "96",
+                                 "--format", "bgr24", "-m", "model.onnx", "-s", "4"});
+    require(pipe.stream && pipe.pipeName == "test_01" && pipe.sharedMemoryName.empty(), "Pipe mode");
+    const auto shared = parseArgs({"trt_sr", "--shared-memory", "test_02", "--width", "128",
+                                   "--height", "96", "--format", "bgr24", "-m", "model.onnx"});
+    require(shared.stream && shared.sharedMemoryName == "test_02", "Shared-memory mode");
+    rejects({"trt_sr", "--stream", "--pipe", "name", "--width", "128", "--height", "96",
+             "--format", "bgr24", "-m", "model.onnx"}, "Conflicting stream modes");
+    rejects({"trt_sr", "--pipe", "pipe", "--shared-memory", "shared", "--width", "128",
+             "--height", "96", "--format", "bgr24", "-m", "model.onnx"}, "Conflicting local modes");
+    rejects({"trt_sr", "--pipe", "", "--width", "128", "--height", "96",
+             "--format", "bgr24", "-m", "model.onnx"}, "Empty pipe name");
+    rejects({"trt_sr", "--shared-memory", "bad/name", "--width", "128", "--height", "96",
+             "--format", "bgr24", "-m", "model.onnx"}, "Invalid shared-memory name");
+    rejects({"trt_sr", "--pipe", "valid", "-m", "model.onnx"}, "Missing local dimensions");
+}
+
 } // namespace
