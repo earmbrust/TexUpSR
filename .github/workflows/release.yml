@@ -43,6 +43,7 @@ jobs:
           pattern: '*'
           path: dist
           merge-multiple: true
+          skip-decompress: true
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
